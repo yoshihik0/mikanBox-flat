@@ -1,8 +1,10 @@
-# 🍊mikanBox
+# 🍊mikanBox flat
 
 **AI時代のパーツ組み立て型・超軽量CMS**
 
-🍊mikanBoxは、数ページから数十ページ規模のWebサイトを、最速かつ安全に構築・運用するために設計されたファイルベースCMSです。データベース不要。PHPが使えるサーバーに置くだけで動きます。
+🍊mikanBox　flatは、数ページから数十ページ規模のWebサイトを、最速かつ安全に構築・運用するために設計されたファイルベースCMSです。データベース不要。PHPが使えるサーバーに置くだけで動きます。
+
+🍊mikanBoxのシリーズには、小規模サイトを手軽に作れるファイルベースCMSの🍊mikanBox flatと、SQLiteを使用してページ数の多いサイトにも使いやすい🍊mikanBoxがあります。両者間では、データの移行も可能です。用途に応じてお選びください。
 
 [English README →](#english)
 
@@ -64,6 +66,7 @@
 
 - **ページ・コンポーネント** — ページ全体のレイアウトを定義するラッパー
 - **パーツ・コンポーネント** — ページや他のコンポーネントに埋め込む再利用パーツ
+- **AI指示・コンポーネント** — design.mdやbrand.mdなどのデザインへの指示
 
 コンポーネントはHTMLとスコープ付きCSSを持ち、入れ子にもできます。
 
@@ -91,6 +94,7 @@
 - MCP対応により、AIエージェントがサイトの構造を理解し、直接コンテンツやパーツを編集・更新可能
 - AIからのマルチモーダル入力（画像など）を直接受け取り、メディアフォルダへのアップロードとページへの配置を自動化
 - 仕様が単純なので、AIに説明不要で専用のデザインや機能・プラグイン相当のパーツを作らせられる
+- デザインの指示であるdesign.mdやサイト全体のコンセプトであるbrand.mdなどの指示を保存し、AIに伝えることができる
 
 ### MCPへの対応
 
@@ -192,6 +196,10 @@ MIT License — Copyright (c) 2026 [yoshihiko.com](http://yoshihiko.com)
 <a name="english"></a>
 
 # 🍊 mikanBox — English Summary
+
+Mikan is a Japanese mandarin orange.
+
+🍊mikanBox comes in two flavors: 🍊mikanBox flat, a file-based CMS for quickly building small sites, and 🍊mikanBox, which uses SQLite and scales comfortably to sites with many pages. Data can be migrated between the two.
 
 **AI-era, parts-assembly, ultra-lightweight CMS**
 

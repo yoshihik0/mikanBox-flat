@@ -31,13 +31,13 @@
         $latestVersion = $_SESSION[$vCacheKey];
     } else {
         $ctx = stream_context_create(['http' => ['timeout' => 3, 'header' => "User-Agent: mikanBox-admin\r\n"]]);
-        $json = @file_get_contents('https://api.github.com/repos/yoshihik0/mikanBox/releases/latest', false, $ctx);
+        $json = @file_get_contents('https://api.github.com/repos/yoshihik0/mikanBox-flat/releases/latest', false, $ctx);
         if ($json) {
             $vData = json_decode($json, true);
             $latestVersion = $vData['tag_name'] ?? null;
         }
         if (!$latestVersion) {
-            $json = @file_get_contents('https://api.github.com/repos/yoshihik0/mikanBox/tags', false, $ctx);
+            $json = @file_get_contents('https://api.github.com/repos/yoshihik0/mikanBox-flat/tags', false, $ctx);
             if ($json) {
                 $vData = json_decode($json, true);
                 $latestVersion = $vData[0]['name'] ?? null;
@@ -52,11 +52,11 @@
         <div style="font-size:0.82em; color:var(--text-sub,#888); padding:6px 2px; display:flex; gap:1.5em; align-items:center; flex-wrap:wrap;">
             <span><?= t('version_current') ?>: <?= htmlspecialchars(MIKANBOX_VERSION) ?></span>
             <span><?= t('version_latest') ?>: <?= $latestVersion ? htmlspecialchars($latestVersion) : '—' ?><?php if ($isOutdated): ?> <span style="color:#e07000;">▲ <?= t('version_update_available') ?></span><?php endif; ?></span>
-            <a href="https://github.com/yoshihik0/mikanBox" target="_blank" rel="noopener" style="color:inherit;">GitHub</a>
+            <a href="https://github.com/yoshihik0/mikanBox-flat" target="_blank" rel="noopener" style="color:inherit;">GitHub</a>
         </div>
     </div>
 
-    <!-- SSG Build Section -->
+    <!-- 1. SSG Build Section -->
     <div id="ssg-accordion">
         <div class="section-container section-tight">
             <details class="section-accordion">
@@ -92,68 +92,34 @@
         </div>
     </div>
 
-    <!-- CSV Import Section -->
-    <div id="csv-import">
+    <!-- 2. Language Section -->
+    <div id="language">
         <div class="section-container section-tight">
             <details class="section-accordion">
                 <summary class="header section-header accordion-summary">
                     <h2 class="accordion-title">
-                        <?= t('csv_head') ?> <span class="accordion-arrow">▼</span>
-                    </h2>
-                </summary>
-                <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro"><?= t('csv_hint') ?></small>
-                    <div class="mt-10">
-                        <input type="file" id="csv-file-input" accept=".csv,text/csv">
-                    </div>
-                    <div class="mt-10">
-                        <button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn"><?= getIcon('copy') ?> <?= t('btn_csv_convert') ?></button>
-                    </div>
-                </div>
-            </details>
-        </div>
-    </div>
-
-    <!-- Site Settings Section -->
-    <div id="settings">
-        <div class="section-container section-tight">
-            <details class="section-accordion">
-                <summary class="header section-header accordion-summary">
-                    <h2 class="accordion-title">
-                        <?= t('nav_settings_title') ?> <span class="accordion-arrow">▼</span>
+                        <?= t('label_system_lang') ?> <span class="accordion-arrow">▼</span>
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
                     <form method="post">
                         <input type="hidden" name="save_action" value="save_settings">
                         <?= csrfField() ?>
-                        <div class="grid-2col">
-                            <div class="form-group">
-                                <label><?= t('label_site_name') ?></label>
-                                <input type="text" name="site_name" value="<?= htmlspecialchars($settings['site_name']??'') ?>">
-                            </div>
-                            <div class="form-group grid-span-2">
-                                <label><?= t('label_site_desc') ?></label>
-                                <textarea name="description" rows="3" class="textarea-min-80"><?= htmlspecialchars($settings['description']??'') ?></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label><?= t('label_site_keywords') ?></label>
-                                <input type="text" name="keywords" value="<?= htmlspecialchars($settings['keywords']??'') ?>">
-                            </div>
-                            <div class="form-group">
-                                <label><?= t('label_site_ogp') ?></label>
-                                <input type="text" name="ogp_image" value="<?= htmlspecialchars($settings['ogp_image']??'') ?>">
-                                <small class="sub-text"><?= t('recommended_size') ?></small>
-                            </div>
+                        <div class="form-group mb-10" style="max-width: 300px;">
+                            <select name="system_lang">
+                                <option value="" <?= empty($settings['system_lang'] ?? '') ? 'selected' : '' ?>><?= t('sett_lang_auto') ?></option>
+                                <option value="ja" <?= ($settings['system_lang'] ?? '') === 'ja' ? 'selected' : '' ?>><?= t('sett_lang_ja') ?></option>
+                                <option value="en" <?= ($settings['system_lang'] ?? '') === 'en' ? 'selected' : '' ?>><?= t('sett_lang_en') ?></option>
+                            </select>
                         </div>
-                        <button type="submit" class="btn btn-blue mt-10"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
+                        <button type="submit" class="btn btn-blue btn-small"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
                     </form>
                 </div>
             </details>
         </div>
     </div>
 
-    <!-- MCP API Key Section -->
+    <!-- 3. MCP API Key Section -->
     <div id="mcp-api-key">
         <div class="section-container section-tight">
             <details class="section-accordion">
@@ -189,34 +155,101 @@
         </div>
     </div>
 
-    <!-- Language Section -->
-    <div id="language">
+    <!-- 4. CSV Import Section -->
+    <div id="csv-import">
         <div class="section-container section-tight">
             <details class="section-accordion">
                 <summary class="header section-header accordion-summary">
                     <h2 class="accordion-title">
-                        <?= t('label_system_lang') ?> <span class="accordion-arrow">▼</span>
+                        <?= t('csv_head') ?> <span class="accordion-arrow">▼</span>
+                    </h2>
+                </summary>
+                <div class="editor-container editor-container-sub">
+                    <small class="sub-text sub-text-intro"><?= t('csv_hint') ?></small>
+                    <div class="mt-10">
+                        <input type="file" id="csv-file-input" accept=".csv,text/csv">
+                    </div>
+                    <div class="mt-10">
+                        <button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn"><?= getIcon('copy') ?> <?= t('btn_csv_convert') ?></button>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <!-- 5. Backup Section -->
+    <div id="backup">
+        <div class="section-container section-tight">
+            <details class="section-accordion">
+                <summary class="header section-header accordion-summary">
+                    <h2 class="accordion-title">
+                        <?= t('backup_head') ?> <span class="accordion-arrow">▼</span>
+                    </h2>
+                </summary>
+                <div class="editor-container editor-container-sub">
+                    <small class="sub-text sub-text-intro"><?= t('backup_hint') ?></small>
+                    <div class="flex-row gap-10">
+                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_data"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_data') ?></button></form>
+                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_media"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_media') ?></button></form>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <!-- 6. Site Settings Section -->
+    <div id="settings">
+        <div class="section-container section-tight">
+            <details class="section-accordion">
+                <summary class="header section-header accordion-summary">
+                    <h2 class="accordion-title">
+                        <?= t('nav_settings_title') ?> <span class="accordion-arrow">▼</span>
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
                     <form method="post">
                         <input type="hidden" name="save_action" value="save_settings">
                         <?= csrfField() ?>
-                        <div class="form-group mb-10" style="max-width: 300px;">
-                            <select name="system_lang">
-                                <option value="" <?= empty($settings['system_lang'] ?? '') ? 'selected' : '' ?>>ブラウザの設定に合わせる</option>
-                                <option value="ja" <?= ($settings['system_lang'] ?? '') === 'ja' ? 'selected' : '' ?>>日本語</option>
-                                <option value="en" <?= ($settings['system_lang'] ?? '') === 'en' ? 'selected' : '' ?>>English</option>
-                            </select>
+                        <div class="grid-2col">
+                            <div class="form-group">
+                                <label><?= t('label_site_name') ?></label>
+                                <input type="text" name="site_name" value="<?= htmlspecialchars($settings['site_name']??'') ?>">
+                            </div>
+                            <div class="form-group grid-span-2">
+                                <label><?= t('label_site_desc') ?></label>
+                                <textarea name="description" rows="3" class="textarea-min-80"><?= htmlspecialchars($settings['description']??'') ?></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label><?= t('label_site_keywords') ?></label>
+                                <input type="text" name="keywords" value="<?= htmlspecialchars($settings['keywords']??'') ?>">
+                            </div>
+                            <div class="form-group">
+                                <label><?= t('label_site_ogp') ?></label>
+                                <input type="text" name="ogp_image" value="<?= htmlspecialchars($settings['ogp_image']??'') ?>">
+                                <small class="sub-text"><?= t('recommended_size') ?></small>
+                            </div>
+                            <div class="form-group">
+                                <label><?= t('label_pages_per_page') ?></label>
+                                <input type="number" name="pages_per_page" value="<?= htmlspecialchars($settings['pages_per_page']??'30') ?>" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label><?= t('label_media_per_page') ?></label>
+                                <input type="number" name="media_per_page" value="<?= htmlspecialchars($settings['media_per_page']??'100') ?>" min="1">
+                            </div>
+                            <div class="form-group grid-span-2" style="display: none;">
+                                <label><?= t('label_register_cat') ?> <?= t('hint_comma_separated') ?></label>
+                                <input type="text" name="category_candidates" value="<?= htmlspecialchars($settings['category_candidates']??'') ?>" placeholder="coffee, sample, gallery_item, dummy, news, nav, test">
+                                <small class="sub-text"><?= t('hint_register_cat') ?></small>
+                            </div>
                         </div>
-                        <button type="submit" class="btn btn-blue btn-small"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
+                        <button type="submit" class="btn btn-blue mt-10"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
                     </form>
                 </div>
             </details>
         </div>
     </div>
 
-    <!-- Password Section -->
+    <!-- 7. Password Section -->
     <div id="password">
         <div class="section-container section-tight">
             <details class="section-accordion">
@@ -244,48 +277,4 @@
         </div>
     </div>
 
-    <!-- Backup Section -->
-    <div id="backup">
-        <div class="section-container section-tight">
-            <details class="section-accordion">
-                <summary class="header section-header accordion-summary">
-                    <h2 class="accordion-title">
-                        <?= t('backup_head') ?> <span class="accordion-arrow">▼</span>
-                    </h2>
-                </summary>
-                <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro"><?= t('backup_hint') ?></small>
-                    <div class="flex-row gap-10">
-                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_data"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_data') ?></button></form>
-                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_media"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_media') ?></button></form>
-                    </div>
-                </div>
-            </details>
-        </div>
-    </div>
 
-    <!-- AI Prompt Section -->
-    <div id="ai-prompt">
-        <div class="section-container section-large-bottom">
-            <details class="section-accordion">
-                <summary class="header section-header accordion-summary">
-                    <h2 class="accordion-title">
-                        <?= t('ai_prompt_head') ?> <span class="accordion-arrow">▼</span>
-                    </h2>
-                </summary>
-                <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro"><?= t('ai_prompt_hint') ?></small>
-                    <form method="post">
-                        <?= csrfField() ?>
-                        <input type="hidden" name="save_action" value="save_prompt">
-                        <textarea name="ai_prompt" id="ai-prompt-editor" class="textarea-sm textarea-prompt"><?= htmlspecialchars($settings['ai_prompt'] ?? '') ?></textarea>
-                        <div class="flex-row">
-                            <button type="submit" class="btn btn-gray btn-small"><?= getIcon('save') ?> <?= t('btn_save_prompt') ?></button>
-                            <button type="button" class="btn btn-gray btn-small" onclick="copyAiPrompt()"><?= getIcon('copy') ?> <?= t('btn_copy_prompt') ?></button>
-                            <button type="button" class="btn btn-gray btn-small" onclick="resetAiPrompt()"><?= getIcon('reset') ?> <?= t('btn_reset_prompt') ?></button>
-                        </div>
-                    </form>
-                </div>
-            </details>
-        </div>
-    </div>

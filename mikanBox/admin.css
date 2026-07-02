@@ -32,6 +32,8 @@
     --status-static-text: #1e40af;
     --status-db-bg: #ede9fe;
     --status-db-text: #6d28d9;
+    --status-pending-bg: #fef3c7;
+    --status-pending-text: #d97706;
     --badge-wrapper: #2d6a4f;
     --badge-parts: #1e293b;
     --footer-bg: #fff8cc;
@@ -90,6 +92,7 @@ body {
     margin-top: 5px;
     letter-spacing: 0.8px;
     opacity: 0.9;
+    text-align: center;
 }
 
 .side-nav a {
@@ -836,6 +839,10 @@ textarea {
     background: var(--status-db-bg);
     color: var(--status-db-text);
 }
+.status-select-inline.pending {
+    background: var(--status-pending-bg);
+    color: var(--status-pending-text);
+}
 
 .title-link {
     font-weight: 600;
@@ -951,6 +958,11 @@ textarea {
     background: var(--status-db-bg);
     color: var(--status-db-text);
     border-color: var(--status-db-text);
+}
+.radio-label.active.pending {
+    background: var(--status-pending-bg);
+    color: var(--status-pending-text);
+    border-color: var(--status-pending-text);
 }
 
 /* --- メディアグリッド・カード --- */
@@ -1413,6 +1425,11 @@ textarea {
     color: var(--badge-wrapper);
     border-color: #a8d4be;
 }
+.type-badge.aidoc {
+    background: #e0dbff;
+    color: #4f46e5;
+    border-color: #c7d2fe;
+}
 
 /* --- ログイン画面 --- */
 .login-body {
@@ -1514,3 +1531,211 @@ footer {
     color: var(--text-muted);
 }
 footer a { color: inherit; text-decoration: none; }
+
+/* --- Pagination (Step 6) --- */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    margin: 20px 0;
+}
+.pagination-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-light);
+    background: #fff;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.pagination-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #f8fafc;
+}
+.pagination-link.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+.pagination-info {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    margin-right: 15px;
+}
+
+/* --- Category Cloud (Steps 3 & 4) --- */
+.category-cloud-wrap {
+    margin: 20px 30px 10px 30px;
+    padding: 15px 20px;
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.category-cloud {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.category-cloud-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-sub);
+    margin-right: 6px;
+}
+.category-cloud-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.btn-new-page {
+    background: var(--accent);
+    color: white;
+}
+.btn-new-page:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+.category-cloud-divider {
+    color: var(--border-light);
+    margin: 0 4px;
+    font-weight: 300;
+}
+.category-cloud-tag {
+    display: inline-block;
+    padding: 6px 14px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: var(--text-sub);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.category-cloud-tag:hover {
+    background: #e2e8f0;
+    color: var(--text);
+}
+.category-cloud-tag.active {
+    background: #ff8c00;
+    color: white;
+    border-color: #ff8c00;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(255,140,0,0.2);
+}
+.category-cloud-tag-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.category-delete-badge {
+    position: absolute;
+    right: 8px;
+    cursor: pointer;
+    color: #94a3b8;
+    font-size: 16px;
+    font-weight: bold;
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    user-select: none;
+    z-index: 2;
+}
+/* Show delete buttons only when delete-mode is active on the container */
+.category-cloud-wrap.delete-mode .category-delete-badge {
+    display: inline-flex;
+}
+.category-cloud-wrap.delete-mode .category-cloud-tag-wrap .category-cloud-tag {
+    padding-right: 26px !important;
+}
+.category-delete-badge:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+.category-cloud-tag.active + .category-delete-badge {
+    color: rgba(255, 255, 255, 0.8);
+}
+.category-cloud-tag.active + .category-delete-badge:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* --- Native Dialog Modal styling --- */
+dialog.custom-dialog {
+    border: none;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 480px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+}
+dialog.custom-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+/* --- Custom File Inputs --- */
+.custom-file-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.custom-file-input {
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+.custom-file-label {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+}
+.custom-file-name {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Hide number input spinner arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

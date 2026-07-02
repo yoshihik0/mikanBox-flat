@@ -3,8 +3,13 @@
     <div id="pages" class="section-anchor">
         <div class="section-container section-large-bottom">
             <div class="header">
-            <h1><?= getIcon('page') ?> <?= t('nav_pages') ?><a href="<?= $helpFile ?>#page-mgmt" target="_blank" class="manual-link"><?= t('admin_help') ?></a></h1>
-            <a href="?view=pages&new=1#page-editor" class="btn btn-blue"><?= getIcon('add') ?> <?= t('btn_create_new') ?></a>
+            <h1>
+                <?= getIcon('page') ?> <?= t('nav_pages') ?>
+                <a href="?view=pages&new=1<?= ($_GET['cat'] ?? '') !== '' ? '&cat=' . urlencode($_GET['cat']) : '' ?>#page-editor" class="btn btn-sm btn-blue" style="margin-left: 15px; display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; padding: 4px 10px; vertical-align: middle;">
+                    <?= getIcon('add') ?> <?= t('btn_create_new') ?>
+                </a>
+                <a href="<?= $helpFile ?>#page-mgmt" target="_blank" class="manual-link"><?= t('admin_help') ?></a>
+            </h1>
         </div>
         <div class="table-responsive" id="pages-table-wrap">
         <form id="ssg-build-form" method="post">
@@ -27,10 +32,28 @@
                 return strcmp($a['id'], $b['id']);
             });
 
-            if (empty($pageDataAll)): ?>
-            <tr><td colspan="6" class="td-empty"><?= t('empty_pages') ?></td></tr>
+            // Category Filtering
+            $selectedCat = $_GET['cat'] ?? '';
+            if ($selectedCat !== '') {
+                $pageDataAll = array_filter($pageDataAll, function($p) use ($selectedCat) {
+                    if ($p['id'] === 'index') return true; // Always show home page
+                    $cats = array_filter(array_map('trim', explode(',', $p['data']['category'] ?? '')));
+                    return in_array($selectedCat, $cats);
+                });
+            }
+
+            // Pagination
+            $itemsPerPage = isset($settings['pages_per_page']) ? (int)$settings['pages_per_page'] : 30;
+            $totalItems = count($pageDataAll);
+            $totalPages = max(1, ceil($totalItems / $itemsPerPage));
+            $currentPage = isset($_GET['p_pages']) ? max(1, min($totalPages, (int)$_GET['p_pages'])) : 1;
+            $offset = ($currentPage - 1) * $itemsPerPage;
+            $pageDataPage = array_slice($pageDataAll, $offset, $itemsPerPage);
+
+            if (empty($pageDataPage)): ?>
+            <tr><td colspan="7" class="td-empty"><?= t('empty_pages') ?></td></tr>
             <?php else: 
-                foreach ($pageDataAll as $pItem):
+                foreach ($pageDataPage as $pItem):
                     $pid = $pItem['id'];
                     $d = $pItem['data'];
                     
@@ -98,6 +121,14 @@
         </table>
         </form>
         </div>
+
+        <?php if ($totalPages > 1): ?>
+        <div class="pagination">
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?view=pages&p_pages=<?= $i ?><?= $selectedCat !== '' ? '&cat=' . urlencode($selectedCat) : '' ?>#pages" class="pagination-link <?= $i === $currentPage ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+        </div>
+        <?php endif; ?>
 
         <div class="flex-row ssg-build-row <?= ($view === 'pages' && ($editId !== null || isset($_GET['new']))) ? 'has-editor' : 'no-editor' ?>">
             <form method="post">

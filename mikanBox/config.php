@@ -2,7 +2,7 @@
 // ==========================================
 // mikanBox Basic Settings
 // ==========================================
-define('MIKANBOX_VERSION', '1.01');
+define('MIKANBOX_VERSION', '2.0');
 if (!defined('CORE_DIR')) define('CORE_DIR', __DIR__);
 
 // Directory path settings (supports folder renaming by using __DIR__ as the base)

@@ -14,21 +14,41 @@
             $compDataListDesign = [];
             foreach($compsListDesign as $cid) {
                 $cd = loadData(COMPONENTS_DIR, $cid);
-                $compDataListDesign[] = ['id' => $cid, 'is_wrapper' => !empty($cd['is_wrapper'])];
+                $compDataListDesign[] = [
+                    'id' => $cid,
+                    'is_wrapper' => !empty($cd['is_wrapper']),
+                    'is_ai_doc' => !empty($cd['is_ai_doc'])
+                ];
             }
             usort($compDataListDesign, function($a, $b) {
-                if ($a['is_wrapper'] !== $b['is_wrapper']) return $a['is_wrapper'] ? -1 : 1;
-                $priority = ['global_head' => 1, 'header' => 2, 'footer' => 3];
-                $pA = $priority[$a['id']] ?? 99;
-                $pB = $priority[$b['id']] ?? 99;
+                $typePriority = function($item) {
+                    if ($item['is_wrapper']) return 1;
+                    if ($item['is_ai_doc']) return 3;
+                    return 2;
+                };
+                $pA = $typePriority($a);
+                $pB = $typePriority($b);
                 if ($pA !== $pB) return $pA - $pB;
+
+                $priority = ['global_head' => 1, 'header' => 2, 'footer' => 3];
+                $pA2 = $priority[$a['id']] ?? 99;
+                $pB2 = $priority[$b['id']] ?? 99;
+                if ($pA2 !== $pB2) return $pA2 - $pB2;
                 return strcmp($a['id'], $b['id']);
             });
             foreach($compDataListDesign as $cItem):
                 $cid = $cItem['id'];
                 $cData = loadData(COMPONENTS_DIR, $cid);
-                $typeLabel = !empty($cData['is_wrapper']) ? t('comp_type_page') : t('comp_type_part');
-                $typeClass = !empty($cData['is_wrapper']) ? 'type-badge wrapper' : 'type-badge';
+                if (!empty($cData['is_wrapper'])) {
+                    $typeLabel = t('comp_type_page') ?: 'ページ';
+                    $typeClass = 'type-badge wrapper';
+                } elseif (!empty($cData['is_ai_doc'])) {
+                    $typeLabel = t('comp_type_aidoc') ?: 'AI指示';
+                    $typeClass = 'type-badge aidoc';
+                } else {
+                    $typeLabel = t('comp_type_part') ?: 'パーツ';
+                    $typeClass = 'type-badge';
+                }
             ?>
             <tr>
                 <td class="td-narrow">

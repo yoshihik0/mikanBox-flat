@@ -135,12 +135,12 @@
                                     $previewUrl = $siteBaseUrl . '/' . $editId;
                                 }
                                 ?>
-                                <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" class="btn btn-blue preview-btn"><?= getIcon('view') ?> プレビュー</a>
+                                <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" class="btn btn-blue preview-btn"><?= getIcon('view') ?> <?= t('admin_view_site') ?></a>
                             <?php endif; ?>
                             <a href="admin.php#pages" class="btn btn-gray"><?= getIcon('arrow_back') ?> <?= t('btn_back_to_list') ?></a>
                         </div>
                         <?php if ($editId && $editId !== 'index'): ?>
-                            <button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red" onclick="return confirm('<?= t('hint_confirm_delete') ?>')"><?= getIcon('delete') ?> <?= t('btn_delete') ?></button>
+                            <button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red"><?= getIcon('delete') ?> <?= t('btn_delete') ?></button>
                         <?php endif; ?>
                     </div>
                 </form>

@@ -165,6 +165,7 @@ function toolDefinitions() {
                 'properties' => [
                     'filename' => ['type' => 'string', 'description' => 'ファイル名（例: "sample.jpg"）。media/ フォルダ内に保存されます。'],
                     'content_base64' => ['type' => 'string', 'description' => 'Base64エンコードされたファイル内容'],
+                    'category' => ['type' => 'string', 'description' => '現在のカテゴリ（例: "blog"）。ファイル名に自動でプレフィックスが付与されます。'],
                 ],
                 'required' => ['filename', 'content_base64']
             ],
@@ -173,6 +174,35 @@ function toolDefinitions() {
             'name' => 'build_ssg',
             'description' => 'public_static のページをすべて静的HTMLとしてビルドする。',
             'inputSchema' => $noProps,
+        ],
+        [
+            'name' => 'list_ai_docs',
+            'description' => '登録されているAI指示書の一覧を取得する。',
+            'inputSchema' => $noProps,
+        ],
+        [
+            'name' => 'get_ai_doc',
+            'description' => '指定されたAI指示書のMarkdown本文とCSSを取得する。',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'AI指示書ID（例: "design", "claude"）']
+                ],
+                'required' => ['id']
+            ],
+        ],
+        [
+            'name' => 'update_ai_doc',
+            'description' => 'AI指示書を作成・更新する。本文は Markdown 形式で指定する。',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id'   => ['type' => 'string', 'description' => 'AI指示書ID（英数字・ハイフン・アンダースコア）'],
+                    'html' => ['type' => 'string', 'description' => 'MarkdownまたはHTML形式の本文'],
+                    'css'  => ['type' => 'string', 'description' => 'オプション: 付随するCSS。空欄可。']
+                ],
+                'required' => ['id', 'html']
+            ],
         ],
     ];
 }
@@ -272,6 +302,7 @@ function toolListComponents() {
             'id'          => $id,
             'is_global'   => $d['is_global']  ?? false,
             'is_wrapper'  => $d['is_wrapper'] ?? false,
+            'is_ai_doc'   => $d['is_ai_doc']  ?? false,
             'html_length' => strlen($d['html'] ?? ''),
         ];
     }
@@ -299,6 +330,7 @@ function toolCreateComponent($args) {
         'css'        => $args['css']        ?? '',
         'is_global'  => $args['is_global']  ?? false,
         'is_wrapper' => $args['is_wrapper'] ?? false,
+        'is_ai_doc'  => $args['is_ai_doc']  ?? false,
     ];
 
     if (saveData(COMPONENTS_DIR, $id, $data)) {
@@ -314,7 +346,7 @@ function toolUpdateComponent($args) {
     $existing = loadData(COMPONENTS_DIR, $id);
     if ($existing === null) return ['error' => "コンポーネント '{$id}' が見つかりません。"];
 
-    foreach (['html', 'css', 'is_global', 'is_wrapper'] as $f) {
+    foreach (['html', 'css', 'is_global', 'is_wrapper', 'is_ai_doc'] as $f) {
         if (array_key_exists($f, $args)) $existing[$f] = $args[$f];
     }
 
@@ -322,6 +354,69 @@ function toolUpdateComponent($args) {
         return ['success' => true, 'id' => $id, 'message' => "コンポーネント '{$id}' を更新しました。"];
     }
     return ['error' => 'コンポーネントの保存に失敗しました。'];
+}
+
+function toolListAiDocs() {
+    $ids = getFileList(COMPONENTS_DIR);
+    sort($ids);
+    $docs = [];
+    foreach ($ids as $id) {
+        $d = loadData(COMPONENTS_DIR, $id);
+        if (!$d || empty($d['is_ai_doc'])) continue;
+        $docs[] = [
+            'id'          => $id,
+            'html_length' => strlen($d['html'] ?? ''),
+        ];
+    }
+    return ['ai_docs' => $docs, 'count' => count($docs)];
+}
+
+function toolGetAiDoc($id) {
+    if (empty($id)) return ['error' => 'id は必須です。'];
+    if (substr(strtolower($id), -3) !== '.md') {
+        $id .= '.md';
+    }
+    $d = loadData(COMPONENTS_DIR, $id);
+    if ($d === null || empty($d['is_ai_doc'])) return ['error' => "AI指示書 '{$id}' が見つかりません。"];
+    $d['id'] = $id;
+    return $d;
+}
+
+function toolUpdateAiDoc($args) {
+    $id = $args['id'] ?? '';
+    if (empty($id)) return ['error' => 'id は必須です。'];
+    if (substr(strtolower($id), -3) !== '.md') {
+        $id .= '.md';
+    }
+
+    $existing = loadData(COMPONENTS_DIR, $id);
+    if ($existing === null) {
+        // 新規作成
+        $data = [
+            'html'       => $args['html'] ?? '',
+            'css'        => $args['css']  ?? '',
+            'is_global'  => false,
+            'is_wrapper' => false,
+            'is_ai_doc'  => true,
+        ];
+        if (saveData(COMPONENTS_DIR, $id, $data)) {
+            return ['success' => true, 'id' => $id, 'message' => "AI指示書 '{$id}' を作成しました。"];
+        }
+        return ['error' => 'AI指示書の保存に失敗しました。'];
+    }
+
+    // 更新
+    if (empty($existing['is_ai_doc'])) {
+        return ['error' => "ID '{$id}' はAI指示書ではありません。通常のコンポーネント用ツールを使用してください。"];
+    }
+
+    if (array_key_exists('html', $args)) $existing['html'] = $args['html'];
+    if (array_key_exists('css', $args))  $existing['css']  = $args['css'];
+
+    if (saveData(COMPONENTS_DIR, $id, $existing)) {
+        return ['success' => true, 'id' => $id, 'message' => "AI指示書 '{$id}' を更新しました。"];
+    }
+    return ['error' => 'AI指示書の保存に失敗しました。'];
 }
 
 function toolGetSettings() {
@@ -336,6 +431,7 @@ function toolUploadMedia($args) {
 
     $filename = basename($args['filename']);
     $content  = base64_decode($args['content_base64']);
+    $category = $args['category'] ?? '';
 
     if ($content === false) return ['error' => 'Base64のデコードに失敗しました。'];
 
@@ -345,9 +441,10 @@ function toolUploadMedia($args) {
         }
     }
 
-    $dest = MEDIA_DIR . '/' . $filename;
+    $resolvedName = resolveMediaSaveName($filename, $category);
+    $dest = MEDIA_DIR . '/' . $resolvedName;
     if (file_put_contents($dest, $content)) {
-        return ['success' => true, 'filename' => $filename, 'message' => "ファイル '{$filename}' をアップロードしました。"];
+        return ['success' => true, 'filename' => $resolvedName, 'message' => "ファイル '{$resolvedName}' をアップロードしました。"];
     }
     return ['error' => 'ファイルの保存に失敗しました。許可属性（パーミッション）を確認してください。'];
 }
@@ -402,7 +499,7 @@ function executeTool($name, $args, $settings) {
     $GLOBALS['mcp_settings'] = $settings;
 
     // デモモード中は書き込み系ツールをブロック
-    $writeTools = ['create_page', 'update_page', 'delete_page', 'create_component', 'update_component', 'upload_media', 'build_ssg'];
+    $writeTools = ['create_page', 'update_page', 'delete_page', 'create_component', 'update_component', 'upload_media', 'build_ssg', 'update_ai_doc'];
     if (!empty($settings['demo_mode']) && in_array($name, $writeTools)) {
         return ['error' => 'デモモードのため保存できません。'];
     }
@@ -417,6 +514,9 @@ function executeTool($name, $args, $settings) {
         'get_component'    => toolGetComponent($args['id'] ?? ''),
         'create_component' => toolCreateComponent($args),
         'update_component' => toolUpdateComponent($args),
+        'list_ai_docs'     => toolListAiDocs(),
+        'get_ai_doc'       => toolGetAiDoc($args['id'] ?? ''),
+        'update_ai_doc'    => toolUpdateAiDoc($args),
         'upload_media'     => toolUploadMedia($args),
         'get_settings'     => toolGetSettings(),
         'build_ssg'        => toolBuildSSG($settings),
@@ -460,105 +560,104 @@ function handleRequest($method, $id, $params, $settings) {
 // Transport: stdio (CLI) または HTTP
 // ==========================================
 
-if (php_sapi_name() === 'cli') {
+if (realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
+    if (php_sapi_name() === 'cli') {
+        // --- stdio transport ---
+        $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
 
-    // --- stdio transport ---
-    $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
+        while (!feof(STDIN)) {
+            $line = fgets(STDIN);
+            if ($line === false || trim($line) === '') continue;
 
-    while (!feof(STDIN)) {
-        $line = fgets(STDIN);
-        if ($line === false || trim($line) === '') continue;
+            $request = json_decode(trim($line), true);
+            if (!$request || !isset($request['method'])) continue;
 
-        $request = json_decode(trim($line), true);
-        if (!$request || !isset($request['method'])) continue;
+            $response = handleRequest(
+                $request['method'],
+                $request['id'] ?? null,
+                $request['params'] ?? [],
+                $settings
+            );
 
-        $response = handleRequest(
-            $request['method'],
-            $request['id'] ?? null,
-            $request['params'] ?? [],
-            $settings
-        );
-
-        if ($response !== null) {
-            echo json_encode($response, JSON_UNESCAPED_UNICODE) . "\n";
-            flush();
+            if ($response !== null) {
+                echo json_encode($response, JSON_UNESCAPED_UNICODE) . "\n";
+                flush();
+            }
         }
-    }
+    } else {
+        // --- HTTP transport ---
+        header('Content-Type: application/json; charset=utf-8');
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Key');
 
-} else {
-
-    // --- HTTP transport ---
-    header('Content-Type: application/json; charset=utf-8');
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Key');
-
-    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-        http_response_code(204);
-        exit;
-    }
-
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        http_response_code(405);
-        exit;
-    }
-
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(mcpErrorResponse(null, -32700, 'POST リクエストのみ受け付けます。'), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $body    = file_get_contents('php://input');
-    $request = json_decode($body, true);
-
-    if (json_last_error() !== JSON_ERROR_NONE || !isset($request['method'])) {
-        echo json_encode(mcpErrorResponse(null, -32700, 'リクエストのパースに失敗しました。'), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $method = $request['method'];
-    $id     = $request['id'] ?? null;
-    $params = $request['params'] ?? [];
-
-    // initialize と notifications は認証不要
-    if ($method === 'initialize' || strpos($method, 'notifications/') === 0 || $method === 'ping') {
-        $response = handleRequest($method, $id, $params, []);
-        if ($response !== null) {
-            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-        } else {
-            http_response_code(202);
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            http_response_code(204);
+            exit;
         }
-        exit;
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+            http_response_code(405);
+            exit;
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(mcpErrorResponse(null, -32700, 'POST リクエストのみ受け付けます。'), JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $body    = file_get_contents('php://input');
+        $request = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || !isset($request['method'])) {
+            echo json_encode(mcpErrorResponse(null, -32700, 'リクエストのパースに失敗しました。'), JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $method = $request['method'];
+        $id     = $request['id'] ?? null;
+        $params = $request['params'] ?? [];
+
+        // initialize と notifications は認証不要
+        if ($method === 'initialize' || strpos($method, 'notifications/') === 0 || $method === 'ping') {
+            $response = handleRequest($method, $id, $params, []);
+            if ($response !== null) {
+                echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            } else {
+                http_response_code(202);
+            }
+            exit;
+        }
+
+        // それ以外は API キー認証
+        $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
+        $apiKey   = $settings['mcp_api_key'] ?? '';
+
+        if (empty($apiKey)) {
+            http_response_code(403);
+            echo json_encode(mcpErrorResponse($id, -32001, 'MCP が有効化されていません。settings.json に mcp_api_key を追加してください。'), JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $authHeader   = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        $apiKeyHeader = $_SERVER['HTTP_X_API_KEY'] ?? '';
+        $provided = '';
+        if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
+            $provided = trim($m[1]);
+        } elseif (!empty($apiKeyHeader)) {
+            $provided = trim($apiKeyHeader);
+        } elseif (!empty($_GET['api_key'])) {
+            $provided = trim($_GET['api_key']);
+        }
+
+        if (!hash_equals($apiKey, $provided)) {
+            http_response_code(401);
+            echo json_encode(mcpErrorResponse($id, -32001, 'Unauthorized: API キーが正しくありません。'), JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $response = handleRequest($method, $id, $params, $settings);
+        echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
-
-    // それ以外は API キー認証
-    $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
-    $apiKey   = $settings['mcp_api_key'] ?? '';
-
-    if (empty($apiKey)) {
-        http_response_code(403);
-        echo json_encode(mcpErrorResponse($id, -32001, 'MCP が有効化されていません。settings.json に mcp_api_key を追加してください。'), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $authHeader   = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    $apiKeyHeader = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    $provided = '';
-    if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
-        $provided = trim($m[1]);
-    } elseif (!empty($apiKeyHeader)) {
-        $provided = trim($apiKeyHeader);
-    } elseif (!empty($_GET['api_key'])) {
-        $provided = trim($_GET['api_key']);
-    }
-
-    if (!hash_equals($apiKey, $provided)) {
-        http_response_code(401);
-        echo json_encode(mcpErrorResponse($id, -32001, 'Unauthorized: API キーが正しくありません。'), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $response = handleRequest($method, $id, $params, $settings);
-    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }
