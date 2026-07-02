@@ -45,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             // Populate defaults on first-time setup
             if (empty($settings)) {
                 $settings = [
-                    'site_name'   => '🍊mikanBox',
+                    'site_name'   => '🍊mikanBox flat',
                     'description' => '',
                     'keywords'    => '',
-                    'memo'        => 'Welcome to 🍊mikanBox!',
+                    'memo'        => 'Welcome to 🍊mikanBox flat!',
                     'system_lang' => '',
                     'ssg_structure' => 'file'
                 ];
@@ -90,13 +90,13 @@ if (!$isLoggedIn && (!$isDemoMode || isset($_GET['login']))) {
 <html lang="<?= getSystemLanguage() ?>">
 <head>
     <meta charset="UTF-8">
-    <title>🍊mikanBox - <?= t('admin_login') ?></title>
+    <title>🍊mikanBox flat - <?= t('admin_login') ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
     <link rel="stylesheet" href="admin.css">
 </head>
 <body class="login-body">
     <div class="login-box">
-        <div class="login-title"><span>🍊</span><span>mikanBox</span></div>
+        <div class="login-title"><span>🍊</span><span>mikanBox flat</span></div>
         <?php if (empty($passwordHash)): ?>
             <p><strong><?= t('hint_initial_setup') ?></strong><br><?= t('hint_setup_msg') ?></p>
             <form method="post">
@@ -370,6 +370,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     }
     elseif ($_POST['save_action'] === 'save_comp') {
         $id = $_POST['id'];
+        $compType = $_POST['comp_type'] ?? 'part';
+        if ($compType === 'ai_doc') {
+            if (substr(strtolower($id), -3) !== '.md') {
+                $id .= '.md';
+            }
+        }
         if(empty($id)) $id = 'comp_' . time();
         $oldId = $_POST['old_id'] ?? null;
 
@@ -381,7 +387,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             'html' => $_POST['html'],
             'css' => $_POST['css'] ?? '',
             'is_global' => !isset($_POST['use_scope']),
-            'is_wrapper' => isset($_POST['is_wrapper']) ? true : false,
+            'is_wrapper' => ($compType === 'wrapper'),
+            'is_ai_doc' => ($compType === 'ai_doc'),
         ];
         if (saveData(COMPONENTS_DIR, $id, $data)) {
             // Delete old file if ID has changed
@@ -410,19 +417,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             $err = $_FILES['image']['error'];
             if ($err === UPLOAD_ERR_OK) {
                 $tmpPath = $_FILES['image']['tmp_name'];
-                $name = basename($_FILES['image']['name']);
-                $name = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $name);
+                $originalName = basename($_FILES['image']['name']);
                 
                 // Security: Validate Extension
-                $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
                 $allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp3', 'm4a', 'mp4'];
                 if (!in_array($ext, $allowedExts)) {
                     $message = t('err_upload_failed') . " (Invalid file extension)";
                 } else {
-                    $targetPath = MEDIA_DIR . '/' . $name;
+                    $category = $_POST['cat'] ?? $_GET['cat'] ?? '';
+                    $resolvedName = resolveMediaSaveName($originalName, $category);
+                    $targetPath = MEDIA_DIR . '/' . $resolvedName;
+                    
                     if (!is_dir(MEDIA_DIR)) mkdir(MEDIA_DIR, 0777, true);
                     if (move_uploaded_file($tmpPath, $targetPath)) {
-                        $message = t('msg_media_uploaded', $name);
+                        $message = t('msg_media_uploaded', $resolvedName);
                     } else {
                         $message = t('err_upload_failed');
                     }
@@ -496,16 +505,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             $message = t('err_resize_failed');
         }
     }
-    elseif ($_POST['save_action'] === 'save_settings' || $_POST['save_action'] === 'save_memo' || $_POST['save_action'] === 'save_prompt') {
+    elseif ($_POST['save_action'] === 'save_settings' || $_POST['save_action'] === 'save_memo') {
         // Shared logic for saving settings (Fix #8)
-        if ($_POST['save_action'] === 'save_settings' || $_POST['save_action'] === 'save_prompt') {
+        if ($_POST['save_action'] === 'save_settings') {
             if (isset($_POST['site_name'])) $settings['site_name'] = $_POST['site_name'];
             if (isset($_POST['system_lang'])) $settings['system_lang'] = $_POST['system_lang'];
             if (isset($_POST['ssg_root_url'])) $settings['ssg_root_url'] = $_POST['ssg_root_url'];
             if (isset($_POST['description'])) $settings['description'] = $_POST['description'];
             if (isset($_POST['keywords'])) $settings['keywords'] = $_POST['keywords'];
             if (isset($_POST['ogp_image'])) $settings['ogp_image'] = $_POST['ogp_image'];
-            if (isset($_POST['ai_prompt'])) $settings['ai_prompt'] = $_POST['ai_prompt'];
+            if (isset($_POST['pages_per_page'])) $settings['pages_per_page'] = (int)$_POST['pages_per_page'];
+            if (isset($_POST['media_per_page'])) $settings['media_per_page'] = (int)$_POST['media_per_page'];
+            if (isset($_POST['category_candidates'])) $settings['category_candidates'] = $_POST['category_candidates'];
 
             // Password change (Skip current password check for simplicity if from admin panel, but new_password must be set)
             if (!empty($_POST['new_password'])) {
@@ -519,6 +530,191 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             $message = t('msg_update_success');
         } else {
             $message = t('err_save_failed');
+        }
+    }
+    elseif ($_POST['save_action'] === 'add_category') {
+        $newCat = trim($_POST['category'] ?? '');
+        $newCat = preg_replace('/[^a-zA-Z0-9_\-]/', '', $newCat);
+        if (empty($newCat)) {
+            $message = t('err_invalid_category');
+            $success = false;
+        } else {
+            $candidates = array_filter(array_map('trim', explode(',', $settings['category_candidates'] ?? '')));
+            if (!in_array($newCat, $candidates)) {
+                $candidates[] = $newCat;
+                $settings['category_candidates'] = implode(', ', $candidates);
+                $saved = file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+                if ($saved) {
+                    $message = sprintf(t('msg_category_added'), $newCat);
+                    $success = true;
+                } else {
+                    $message = t('err_category_add_failed_msg');
+                    $success = false;
+                }
+            } else {
+                $message = sprintf(t('err_category_exists'), $newCat);
+                $success = true;
+            }
+        }
+        if (isset($_POST['ajax_request'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => $success, 'message' => $message]);
+            exit;
+        }
+    }
+    elseif ($_POST['save_action'] === 'delete_category') {
+        $delCat = trim($_POST['category'] ?? '');
+        $confirmed = isset($_POST['confirmed']) && $_POST['confirmed'] === '1';
+
+        if (empty($delCat)) {
+            $message = t('err_category_not_specified');
+            $success = false;
+        } else {
+            $allPageIds = getFileList(POSTS_DIR);
+            $usageCount = 0;
+            foreach ($allPageIds as $pid) {
+                $pData = loadData(POSTS_DIR, $pid);
+                if ($pData && !empty($pData['category'])) {
+                    $cats = array_filter(array_map('trim', explode(',', $pData['category'])));
+                    if (in_array($delCat, $cats)) {
+                        $usageCount++;
+                    }
+                }
+            }
+
+            if ($usageCount > 0 && !$confirmed) {
+                if (isset($_POST['ajax_request'])) {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => false,
+                        'require_confirm' => true,
+                        'usage_count' => $usageCount,
+                        'message' => sprintf(t('category_delete_in_use_confirm'), $usageCount)
+                    ]);
+                    exit;
+                } else {
+                    $message = sprintf(t('err_category_in_use'), $usageCount);
+                    $success = false;
+                }
+            } else {
+                $candidates = array_filter(array_map('trim', explode(',', $settings['category_candidates'] ?? '')));
+                $newCandidates = array_diff($candidates, [$delCat]);
+                $settings['category_candidates'] = implode(', ', $newCandidates);
+                $savedSettings = file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+                
+                $updatedPages = 0;
+                foreach ($allPageIds as $pid) {
+                    $pData = loadData(POSTS_DIR, $pid);
+                    if ($pData && !empty($pData['category'])) {
+                        $cats = array_filter(array_map('trim', explode(',', $pData['category'])));
+                        if (in_array($delCat, $cats)) {
+                            $newCats = array_diff($cats, [$delCat]);
+                            $pData['category'] = implode(', ', $newCats);
+                            $pData['updated_at'] = date('Y-m-d H:i:s');
+                            if (saveData(POSTS_DIR, $pid, $pData)) {
+                                $updatedPages++;
+                            }
+                        }
+                    }
+                }
+                
+                if ($savedSettings) {
+                    $message = sprintf(t('msg_category_deleted'), $delCat) . ($updatedPages > 0 ? sprintf(t('msg_category_removed_from_pages'), $updatedPages) : "");
+                    $success = true;
+                } else {
+                    $message = t('err_category_delete_failed_msg');
+                    $success = false;
+                }
+            }
+        }
+        if (isset($_POST['ajax_request'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => $success, 'message' => $message]);
+            exit;
+        }
+    }
+    elseif ($_POST['save_action'] === 'rename_media') {
+        $oldName = basename($_POST['old_filename']);
+        $newName = basename($_POST['new_filename']);
+        $newName = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $newName);
+        
+        $oldPath = MEDIA_DIR . '/' . $oldName;
+        $newPath = MEDIA_DIR . '/' . $newName;
+        
+        $confirmed = isset($_POST['confirmed']) ? $_POST['confirmed'] : null;
+        $success = false;
+        
+        if (empty($newName)) {
+            $message = t('err_filename_empty');
+        } elseif (!file_exists($oldPath)) {
+            $message = t('err_original_file_not_found');
+        } elseif (file_exists($newPath)) {
+            $message = sprintf(t('err_rename_target_exists'), $newName);
+        } else {
+            // Find references in posts and components
+            $affectedPosts = [];
+            $postIds = getFileList(POSTS_DIR);
+            foreach ($postIds as $pid) {
+                $raw = file_get_contents(POSTS_DIR . '/' . $pid . '.json');
+                if (strpos($raw, $oldName) !== false) {
+                    $affectedPosts[] = $pid;
+                }
+            }
+            
+            $affectedComps = [];
+            $compIds = getFileList(COMPONENTS_DIR);
+            foreach ($compIds as $cid) {
+                $raw = file_get_contents(COMPONENTS_DIR . '/' . $cid . '.json');
+                if (strpos($raw, $oldName) !== false) {
+                    $affectedComps[] = $cid;
+                }
+            }
+            
+            $totalCount = count($affectedPosts) + count($affectedComps);
+            
+            if ($totalCount > 0 && is_null($confirmed)) {
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => false,
+                    'require_confirm' => true,
+                    'message' => sprintf(t('media_rename_in_use_confirm'), $totalCount)
+                ]);
+                exit;
+            }
+            
+            if (rename($oldPath, $newPath)) {
+                $message = sprintf(t('msg_media_renamed'), $newName);
+                $success = true;
+                
+                if ($confirmed === '1' && $totalCount > 0) {
+                    $updatedCount = 0;
+                    foreach ($affectedPosts as $pid) {
+                        $filePath = POSTS_DIR . '/' . $pid . '.json';
+                        $raw = file_get_contents($filePath);
+                        $newRaw = str_replace($oldName, $newName, $raw);
+                        if (file_put_contents($filePath, $newRaw) !== false) {
+                            $updatedCount++;
+                        }
+                    }
+                    foreach ($affectedComps as $cid) {
+                        $filePath = COMPONENTS_DIR . '/' . $cid . '.json';
+                        $raw = file_get_contents($filePath);
+                        $newRaw = str_replace($oldName, $newName, $raw);
+                        if (file_put_contents($filePath, $newRaw) !== false) {
+                            $updatedCount++;
+                        }
+                    }
+                    $message .= sprintf(t('msg_media_links_updated'), $updatedCount);
+                }
+            } else {
+                $message = t('err_rename_failed_msg');
+            }
+        }
+        
+        if (isset($_POST['ajax_request'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => $success, 'message' => $message]);
+            exit;
         }
     }
     elseif ($_POST['save_action'] === 'ssg_save_settings') {
@@ -548,7 +744,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $errors = array_filter($results, fn($r) => strpos($r, 'Error') !== false);
         $message = t('msg_ssg_finished', count($built));
         if (!empty($errors)) $message .= ' / ' . implode(', ', $errors);
-        if (empty($results)) $message .= ' (公開(HTML)に設定されたページがありません)';
+        if (empty($results)) $message .= t('msg_html_pages_none');
         
         // Save settings as well
         $settings['ssg_dir'] = $activeSsgDir;
@@ -747,7 +943,7 @@ if (ob_get_length()) ob_clean();
 <html lang="<?= getSystemLanguage() ?>">
 <head>
     <meta charset="UTF-8">
-    <title>🍊mikanBox - <?= t('admin_site_title') ?></title>
+    <title>🍊mikanBox flat - <?= t('admin_site_title') ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
     <link rel="stylesheet" href="admin.css">
 </head>
@@ -783,7 +979,8 @@ function getIcon($name) {
         'add' => 'add',
         'copy' => 'content_copy',
         'open_in_new' => 'open_in_new',
-        'reset' => 'restart_alt'
+        'reset' => 'restart_alt',
+        'check' => 'check'
     ];
     $iconName = $icons[$name] ?? '';
     return $iconName ? '<span class="material-symbols-outlined icon">' . $iconName . '</span>' : '';
@@ -796,7 +993,7 @@ function getIcon($name) {
 <nav class="side-nav">
     <div class="side-nav-brand">
         <span class="emoji">🍊</span>
-        <span class="text">mikanBox</span>
+        <span class="text">mikanBox<br>flat</span>
     </div>
     
     <a href="#pages" class="nav-pages" title="<?= t('nav_pages') ?>">
@@ -808,7 +1005,7 @@ function getIcon($name) {
     <a href="#page-editor" class="nav-edit active" data-editor-type="page" title="<?= t('btn_edit') ?>">
         <?= getIcon('edit') ?>
         <span><?= t('btn_edit') ?></span>
-        <span class="close-badge" data-url="admin.php#pages" title="閉じる">×</span>
+        <span class="close-badge" data-url="admin.php#pages" title="<?= t('btn_close') ?>">×</span>
     </a>
     <?php endif; ?>
     <a href="#site" class="nav-settings" title="<?= t('nav_settings') ?>">
@@ -824,7 +1021,7 @@ function getIcon($name) {
     <a href="#design-editor" class="nav-edit active" data-editor-type="design" title="<?= t('btn_edit') ?>">
         <?= getIcon('edit') ?>
         <span><?= t('btn_edit') ?></span>
-        <span class="close-badge" data-url="admin.php#design" title="閉じる">×</span>
+        <span class="close-badge" data-url="admin.php#design" title="<?= t('btn_close') ?>">×</span>
     </a>
     <?php endif; ?>
 
@@ -846,6 +1043,59 @@ function getIcon($name) {
         <?php endif; ?>
     </div>
     
+    <!-- Category Cloud -->
+    <?php
+    $allPageIds = getFileList(POSTS_DIR);
+    $allCategories = [];
+    foreach ($allPageIds as $pid) {
+        $pData = loadData(POSTS_DIR, $pid);
+        if ($pData && !empty($pData['category'])) {
+            $cats = array_filter(array_map('trim', explode(',', $pData['category'])));
+            foreach ($cats as $c) {
+                if ($c !== '') $allCategories[] = $c;
+            }
+        }
+    }
+    if (!empty($settings['category_candidates'])) {
+        $registeredCats = array_filter(array_map('trim', explode(',', $settings['category_candidates'])));
+        foreach ($registeredCats as $c) {
+            if ($c !== '') $allCategories[] = $c;
+        }
+    }
+    $allCategories = array_unique($allCategories);
+    
+    $selectedCat = $_GET['cat'] ?? '';
+    if ($selectedCat !== '' && !in_array($selectedCat, $allCategories)) {
+        $allCategories[] = $selectedCat;
+    }
+    sort($allCategories);
+    ?>
+    <div class="category-cloud-wrap">
+        <div class="category-cloud">
+            <span class="category-cloud-label"><?= t('category_cloud_label') ?></span>
+            <a href="?cat=" class="category-cloud-tag <?= $selectedCat === '' ? 'active' : '' ?>">
+                <?= t('all_pages') ?? 'すべて' ?>
+            </a>
+            <?php foreach ($allCategories as $c): ?>
+                <span class="category-cloud-tag-wrap">
+                    <a href="?cat=<?= urlencode($c) ?>" class="category-cloud-tag <?= $selectedCat === $c ? 'active' : '' ?>">
+                        <?= htmlspecialchars($c) ?>
+                    </a>
+                    <span class="category-delete-badge" data-category="<?= htmlspecialchars($c) ?>" title="<?= t('category_delete_confirm_title') ?>">&times;</span>
+                </span>
+            <?php endforeach; ?>
+            <span class="category-control-group" style="display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;">
+                <span class="category-cloud-divider" style="margin: 0;">|</span>
+                <a href="#" class="category-cloud-tag btn-add-cat" style="border-style: dashed; background: transparent; display: inline-flex; align-items: center; gap: 5px;">
+                    <?= getIcon('add') ?> <?= t('btn_add') ?>
+                </a>
+                <a href="#" class="category-cloud-tag btn-toggle-del-cat" style="border-style: dashed; background: transparent; display: inline-flex; align-items: center; gap: 5px;">
+                    <?= getIcon('delete') ?> <?= t('btn_delete') ?>
+                </a>
+                <input type="text" id="new-category-input" placeholder="<?= t('placeholder_new_category') ?>" style="display: none; width: 120px; padding: 4px 10px; border-radius: 8px; border: 1px solid #ff8c00; font-size: 0.85rem; height: 30px; box-sizing: border-box; vertical-align: middle;">
+            </span>
+        </div>
+    </div>
 
     <?php include __DIR__ . '/views/pages.php'; ?>
 
@@ -864,7 +1114,7 @@ function getIcon($name) {
     // エディター読み込み時: 遅延なしで即スムーズスクロール開始（window.onload より大幅に早い）
     (function() {
         var hash = window.location.hash;
-        if (hash === '#page-editor' || hash === '#design-editor') {
+        if (hash === '#page-editor' || hash === '#design-editor' || hash === '#pages' || hash === '#media') {
             var el = document.querySelector(hash);
             if (el) el.scrollIntoView({ behavior: 'smooth' });
         }
@@ -911,6 +1161,11 @@ function getIcon($name) {
         const origHtml = btn ? btn.innerHTML : '';
         if (btn) { btn.textContent = '<?= t('msg_uploading') ?>'; btn.disabled = true; }
         formData.append('ajax_request', '1');
+        const urlParams = new URLSearchParams(window.location.search);
+        const cat = urlParams.get('cat') || '';
+        if (cat && !formData.has('cat')) {
+            formData.append('cat', cat);
+        }
         try {
             const res = await fetch(window.location.href, { method: 'POST', body: formData });
             const json = await res.json().catch(() => ({}));
@@ -928,25 +1183,41 @@ function getIcon($name) {
 
     async function refreshMediaGrid() {
         try {
-            const res = await fetch('?ajax_media=1');
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('ajax_media', '1');
+            const res = await fetch('?' + urlParams.toString());
             const html = await res.text();
             const temp = document.createElement('div');
             temp.innerHTML = html;
-            const newGrid = temp.querySelector('.media-grid');
-            const oldGrid = document.querySelector('.media-grid');
-            if (newGrid && oldGrid) oldGrid.outerHTML = newGrid.outerHTML;
+            const newWrap = temp.querySelector('#media-list-wrap');
+            const oldWrap = document.querySelector('#media-list-wrap');
+            if (newWrap && oldWrap) oldWrap.outerHTML = newWrap.outerHTML;
         } catch(err) {}
     }
 
     async function refreshPageList() {
         try {
-            const res = await fetch('?ajax_pages=1&view=pages');
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('ajax_pages', '1');
+            urlParams.set('view', 'pages');
+            const res = await fetch('?' + urlParams.toString());
             const html = await res.text();
             const temp = document.createElement('div');
             temp.innerHTML = html;
             const newWrap = temp.querySelector('#pages-table-wrap');
             const oldWrap = document.querySelector('#pages-table-wrap');
             if (newWrap && oldWrap) oldWrap.outerHTML = newWrap.outerHTML;
+            // Also refresh pagination controls if any
+            const newPag = temp.querySelector('#pages .pagination');
+            const oldPag = document.querySelector('#pages .pagination');
+            if (newPag && oldPag) {
+                oldPag.outerHTML = newPag.outerHTML;
+            } else if (oldPag) {
+                oldPag.remove();
+            } else if (newPag) {
+                const tableWrap = document.querySelector('#pages-table-wrap');
+                if (tableWrap) tableWrap.parentNode.insertBefore(newPag, tableWrap.nextSibling);
+            }
         } catch(err) {}
     }
 
@@ -962,113 +1233,83 @@ function getIcon($name) {
         } catch(err) {}
     }
 
-    // Resize and delete media forms - event delegation
+    // Resize, rename and delete media forms - event delegation
     document.addEventListener('submit', async function(e) {
         const form = e.target;
         const actionInput = form.querySelector('input[name="save_action"]');
         if (!actionInput) return;
         const action = actionInput.value;
-        if (action === 'resize_media' || action === 'delete_media') {
+        if (action === 'resize_media' || action === 'delete_media' || action === 'rename_media') {
             e.preventDefault();
+            
+            if (action === 'delete_media') {
+                const confirmed = await window.showConfirmDialog('<?= t('hint_confirm_delete') ?>', '<?= t('btn_delete') ?>', '<?= t('btn_delete_confirm') ?>', 'btn-red');
+                if (!confirmed) return;
+            }
             const formData = new FormData(form);
             formData.append('ajax_request', '1');
             try {
                 const res = await fetch(window.location.href, { method: 'POST', body: formData });
                 const json = await res.json().catch(() => ({}));
-                showToast(json.message || '', !json.success);
-                if (json.success) await refreshMediaGrid();
+                
+                if (action === 'rename_media' && json.require_confirm) {
+                    const dialog = document.getElementById('rename-confirm-dialog');
+                    const msgEl = document.getElementById('rename-dialog-message');
+                    const btnCancel = document.getElementById('btn-rename-cancel');
+                    const btnOnly = document.getElementById('btn-rename-only');
+                    const btnUpdate = document.getElementById('btn-rename-update');
+                    
+                    if (dialog && msgEl && btnCancel && btnOnly && btnUpdate) {
+                        msgEl.textContent = json.message;
+                        dialog.showModal();
+                        
+                        const choice = await new Promise((resolve) => {
+                            const onCancel = () => { dialog.close(); resolve('cancel'); };
+                            const onOnly = () => { dialog.close(); resolve('only'); };
+                            const onUpdate = () => { dialog.close(); resolve('update'); };
+                            
+                            btnCancel.addEventListener('click', onCancel, { once: true });
+                            btnOnly.addEventListener('click', onOnly, { once: true });
+                            btnUpdate.addEventListener('click', onUpdate, { once: true });
+                            
+                            dialog.addEventListener('close', () => {
+                                btnCancel.removeEventListener('click', onCancel);
+                                btnOnly.removeEventListener('click', onOnly);
+                                btnUpdate.removeEventListener('click', onUpdate);
+                                resolve('cancel');
+                            }, { once: true });
+                        });
+                        
+                        if (choice === 'update') {
+                            formData.append('confirmed', '1');
+                            const res2 = await fetch(window.location.href, { method: 'POST', body: formData });
+                            const json2 = await res2.json().catch(() => ({}));
+                            showToast(json2.message || '', !json2.success);
+                            if (json2.success) await refreshMediaGrid();
+                        } else if (choice === 'only') {
+                            formData.append('confirmed', '0');
+                            const res2 = await fetch(window.location.href, { method: 'POST', body: formData });
+                            const json2 = await res2.json().catch(() => ({}));
+                            showToast(json2.message || '', !json2.success);
+                            if (json2.success) await refreshMediaGrid();
+                        } else {
+                            const newFileInput = form.querySelector('input[name="new_filename"]');
+                            const oldFileInput = form.querySelector('input[name="old_filename"]');
+                            if (newFileInput && oldFileInput) {
+                                newFileInput.value = oldFileInput.value;
+                            }
+                        }
+                    }
+                } else {
+                    showToast(json.message || '', !json.success);
+                    if (json.success) await refreshMediaGrid();
+                }
             } catch(err) {
                 showToast('<?= t('err_save_failed') ?>', true);
             }
         }
     });
 
-    function basename(path) {
-        return path.split('/').reverse()[0];
-    }
-    function buildDefaultPrompt() {
-        const promptId = basename(window.location.pathname.replace('/admin.php', ''));
-        const promptContent = `<?= t('prompt_expert_intro', basename(__DIR__)) ?>
-<?= t('prompt_sys_info') ?>
-- CMS: 🍊mikanBox (Component-driven flat-file CMS)
-- Structure: ${promptId}/ (admin, config, lib, data), media/
-- AI Interface: MCP (Model Context Protocol) enabled. Use tools to read/write pages, components, and media directly.
-
-[Page Fields]
-Each page has the following fields:
-- Title / ID (slug) / Status (draft | public-dynamic | public-static | DB)
-- Category / Keywords / Description / OGP Image
-- Content: the page body, written in Markdown (default) or HTML
-- Raw HTML mode: enable this checkbox when the body is pure complex HTML — disables Markdown processing
-- Page CSS: page-specific CSS, auto-scoped to this page (keep "Scope CSS" ON)
-
-[Available Tags]
-Use these tags in Content (page body) and Component HTML:
-- {{TITLE}}, {{DESCRIPTION}}, {{KEYWORDS}}, {{OGP_IMAGE}}, {{FULL_TITLE}}
-- {{CONTENT}} — outputs the page body (Wrappers only)
-- {{HEAD_CSS}} — outputs all component CSS; place inside <head> in the wrapper component
-- {{COMPONENT:id}} — embeds a component by ID
-- {{NAV_LINKS:category}} / {{NAV_CARDS:category}} — auto-generated navigation lists
-- {{UPDATE_DATE}}, {{IS_NEW:30}}, {{IS_ACTIVE}}
-- {{DATAROW:n}}, {{DATA:key}} — database row access
-
-[Images]
-- All media files are stored in the "media/" folder.
-- Reference in HTML src attributes: images/filename or media/filename (auto-converted to full URL)
-- Reference in CSS (background-image, etc.): images/filename or media/filename (auto-converted)
-- Reference in Markdown: just the filename (e.g. photo.jpg)
-- AI can upload images directly using MCP tools (upload_media).
-
-[CSS — Where to Write It]
-This is the most important rule. NEVER write <style> blocks in page Content or component HTML.
-1. Page-specific styles → Page "CSS" field. Scoped automatically to that page.
-2. Component-specific styles → Component "CSS" field. Scoped to that component.
-3. Global styles shared across all pages → "_ai" component CSS field.
-4. Fonts (Google Fonts, @font-face, etc.) → "_ai" component CSS field using @import or @font-face.
-   OR add <link rel="preconnect"> / <link rel="stylesheet"> tags directly in "_ai" component HTML inside <head>.
-5. Third-party CSS libraries → add <link> tags in "_ai" component HTML inside <head>.
-
-[Wrapper & Head Section]
-- The "_ai" component is the global page wrapper (is_wrapper: true, is_global: true).
-- It defines the full page shell: <html>, <head>, <body>.
-- {{HEAD_CSS}} inside <head> loads all scoped component CSS and page CSS automatically.
-- To add global <link>, <meta>, or <script> tags, edit "_ai" component HTML directly.
-- Do NOT create a custom wrapper unless the page truly needs a different page-level structure.
-
-[Content: Markdown vs Raw HTML]
-- Default: write the page body in Markdown. HTML block elements (div, section, etc.) can be freely mixed in.
-- Apply CSS classes in Markdown: [text]{.className} for inline spans, or {.className} at the end of a block line.
-- Enable "Raw HTML" mode only when the entire body is complex HTML that must not be processed by Markdown.
-- When "Raw HTML" is ON, the body is output as-is — no Markdown processing, no <br> insertion.
-
-[Shared Header / Footer — Custom Wrapper Pattern]
-When multiple pages need the same header and footer, create a custom wrapper component instead of editing "_ai" directly.
-1. Create a new component (e.g., ID: "mysite_layout") with is_wrapper: true. Scope CSS OFF recommended.
-2. Base its HTML on "_ai". Add header and footer HTML inside <body>. Keep {{CONTENT}} where the page body goes.
-3. Write shared CSS (typography, colors, layout) in this component's CSS field.
-4. On each page using this layout, set "Design Component" to "mysite_layout".
-5. Each page's Content field then only needs the <main> or <article> body (Markdown is fine).
-Reason: editing "_ai" affects ALL pages. A custom wrapper isolates site-specific layout from the base template.
-
-[Component Naming]
-- "_" prefix (e.g., _ai, _header): system/global components. Edit carefully.
-- No prefix: custom components for this site. Create freely.
-
-[Current Request]
-Please enter your request here.`;
-        return promptContent;
-    }
-    function initAiPrompt() {
-        const textarea = document.getElementById('ai-prompt-editor');
-        if (!textarea) return;
-        const savedPrompt = <?= json_encode($settings['ai_prompt'] ?? '') ?>;
-        textarea.value = savedPrompt || buildDefaultPrompt();
-    }
-    function resetAiPrompt() {
-        const textarea = document.getElementById('ai-prompt-editor');
-        if (!textarea) return;
-        textarea.value = buildDefaultPrompt();
-    }
     async function copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);
@@ -1169,10 +1410,10 @@ Please enter your request here.`;
                     else selectEl.classList.add('draft');
                 }
             } else {
-                showToast('保存に失敗しました', true);
+                showToast('<?= t('err_save_failed') ?>', true);
             }
         } catch(err) {
-            showToast('通信エラー', true);
+            showToast('<?= t('err_network_error') ?>', true);
         }
     }
     let isNavigating = false;
@@ -1185,7 +1426,6 @@ Please enter your request here.`;
             { id: 'ssg-accordion', color: '#ffffff', navId: 'nav-settings' },
             { id: 'settings', color: '#ffffff', navId: 'nav-settings' },
             { id: 'backup', color: '#ffffff', navId: 'nav-settings' },
-            { id: 'ai-prompt', color: '#ffffff', navId: 'nav-settings' },
             { id: 'design', color: '#fffbeb', navId: 'nav-design' }, // design
             { id: 'media', color: '#f0fdf4', navId: 'nav-media' }    // media
         ];
@@ -1289,7 +1529,7 @@ Please enter your request here.`;
         a.dataset.editorType = type;
         a.title = '<?= t('btn_edit') ?>';
         a.innerHTML = '<?= getIcon('edit') ?><span><?= t('btn_edit') ?></span>' +
-            '<span class="close-badge" data-url="' + closeUrl + '" title="閉じる">×</span>';
+            '<span class="close-badge" data-url="' + closeUrl + '" title="<?= t('btn_close') ?>">×</span>';
         return a;
     }
 
@@ -1339,6 +1579,15 @@ Please enter your request here.`;
 
                 // エディタHTMLをDOMに挿入
                 slot.innerHTML = html;
+                
+                // 動的にスクリプトを実行する
+                slot.querySelectorAll('script').forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+
                 const editor = document.getElementById(editorId);
                 if (!editor) return;
 
@@ -1369,7 +1618,7 @@ Please enter your request here.`;
             })
             .catch(err => {
                 if (err.name === 'AbortError') return; // ダブルクリックによるキャンセルは無視
-                showToast('エディタの読み込みに失敗しました', true);
+                showToast('<?= t('err_editor_load_failed') ?>', true);
                 console.error(err);
             });
     }
@@ -1506,7 +1755,6 @@ Please enter your request here.`;
     });
 
     window.onload = function() {
-        initAiPrompt();
         // 早期スクリプトで注入した transition 抑制を解除する前に正しい状態を設定
         updateScrollPos();
         // scroll/resizeリスナーはonload内で登録（ハッシュスクロール中の誤発火を防ぐ）
@@ -1641,11 +1889,11 @@ Please enter your request here.`;
                             unsavedModal.style.display = 'none';
                             spaHandlePendingNavigation();
                         } else {
-                            showToast('保存に失敗しました', true);
+                            showToast('<?= t('err_save_failed') ?>', true);
                             unsavedModal.style.display = 'none';
                         }
                     } catch(e) {
-                        showToast('通信エラーが発生しました', true);
+                        showToast('<?= t('err_network_error_detail') ?>', true);
                         unsavedModal.style.display = 'none';
                     } finally {
                         saveBtn.innerHTML = originalBtnText;
@@ -1666,12 +1914,12 @@ Please enter your request here.`;
             const actionInput = (submitter && submitter.name === 'save_action') ? submitter : form.querySelector('input[name="save_action"]');
             const action = actionInput ? actionInput.value : '';
             
-            const ajaxActions = ['save_page', 'save_comp', 'save_settings', 'save_prompt', 'save_memo', 'ssg_save_settings', 'generate_mcp_key'];
+            const ajaxActions = ['save_page', 'save_comp', 'save_settings', 'save_memo', 'ssg_save_settings', 'generate_mcp_key'];
             
             if (ajaxActions.includes(action)) {
                 e.preventDefault();
                 const originalText = submitter.innerHTML;
-                submitter.innerHTML = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> 保存中...';
+                submitter.innerHTML = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> ' + <?= json_encode(t('msg_saving')) ?>;
                 submitter.disabled = true;
                 
                 try {
@@ -1717,7 +1965,7 @@ Please enter your request here.`;
                                             previewBtn = document.createElement('a');
                                             previewBtn.target = '_blank';
                                             previewBtn.className = 'btn btn-blue preview-btn';
-                                            previewBtn.innerHTML = '<span class="material-symbols-outlined icon">visibility</span> プレビュー';
+                                            previewBtn.innerHTML = '<span class="material-symbols-outlined icon">visibility</span> ' + <?= json_encode(t('btn_preview')) ?>;
                                             saveBtn.insertAdjacentElement('afterend', previewBtn);
                                         }
                                     }
@@ -1728,10 +1976,10 @@ Please enter your request here.`;
                             refreshCompList();
                         }
                     } else {
-                        showToast('保存に失敗しました', true);
+                        showToast('<?= t('err_save_failed') ?>', true);
                     }
                 } catch(err) {
-                    showToast('通信エラー', true);
+                    showToast('<?= t('err_network_error') ?>', true);
                 } finally {
                     submitter.innerHTML = originalText;
                     submitter.disabled = false;
@@ -1753,6 +2001,86 @@ Please enter your request here.`;
         t.style.opacity = '1';
         setTimeout(() => t.style.opacity = '0', 3000);
     }
+
+    window.showConfirmDialog = function(message, title = '', okText = '', okClass = 'btn-red') {
+        return new Promise((resolve) => {
+            const dialog = document.getElementById('global-confirm-dialog');
+            const titleEl = document.getElementById('global-confirm-title');
+            const msgEl = document.getElementById('global-confirm-message');
+            const btnCancel = document.getElementById('btn-global-confirm-cancel');
+            const btnOk = document.getElementById('btn-global-confirm-ok');
+            
+            if (!dialog || !msgEl || !btnCancel || !btnOk) {
+                resolve(confirm(message));
+                return;
+            }
+            
+            if (titleEl) titleEl.textContent = title || '<?= t('btn_delete') ?>';
+            msgEl.textContent = message;
+            btnOk.textContent = okText || '<?= t('btn_delete_confirm') ?>';
+            
+            btnOk.className = 'btn btn-small ' + okClass;
+            
+            dialog.showModal();
+            
+            const onCancel = () => { dialog.close(); resolve(false); };
+            const onOk = () => { dialog.close(); resolve(true); };
+            
+            btnCancel.addEventListener('click', onCancel, { once: true });
+            btnOk.addEventListener('click', onOk, { once: true });
+            
+            dialog.addEventListener('close', () => {
+                btnCancel.removeEventListener('click', onCancel);
+                btnOk.removeEventListener('click', onOk);
+                resolve(false);
+            }, { once: true });
+        });
+    };
+
+    // Global submit event listener to intercept native delete operations
+    document.addEventListener('submit', async function(e) {
+        const form = e.target;
+        
+        // Skip AJAX forms (like media forms) that are handled elsewhere
+        const actionInput = form.querySelector('input[name="save_action"]');
+        const action = actionInput ? actionInput.value : '';
+        if (action === 'resize_media' || action === 'delete_media' || action === 'rename_media') {
+            return;
+        }
+
+        if (form.dataset.confirmed === '1') {
+            return;
+        }
+        
+        const submitter = e.submitter;
+        const isDeleteAction = 
+            (submitter && submitter.name === 'save_action' && (submitter.value === 'delete_page' || submitter.value === 'delete_comp')) ||
+            (action === 'delete_user');
+            
+        if (isDeleteAction) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            let msg = '<?= t('hint_confirm_delete') ?>';
+            if (action === 'delete_user') {
+                const dispName = form.dataset.displayName || '';
+                msg = `本当にこのユーザー「${dispName}」を削除しますか？`;
+            }
+            
+            const confirmed = await window.showConfirmDialog(msg, '<?= t('btn_delete') ?>', '<?= t('btn_delete_confirm') ?>', 'btn-red');
+            if (confirmed) {
+                form.dataset.confirmed = '1';
+                if (submitter && submitter.name && submitter.value) {
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = submitter.name;
+                    hidden.value = submitter.value;
+                    form.appendChild(hidden);
+                }
+                form.submit();
+            }
+        }
+    });
     
     if (!document.getElementById('spin-keyframes')) {
         const style = document.createElement('style');
@@ -1760,11 +2088,243 @@ Please enter your request here.`;
         style.textContent = `@keyframes spin { 100% { transform: rotate(360deg); } }`;
         document.head.appendChild(style);
     }
+
+    // Category Cloud control handlers
+    document.addEventListener('click', async function(e) {
+        const addBtn = e.target.closest('.btn-add-cat');
+        if (addBtn) {
+            e.preventDefault();
+            addBtn.style.display = 'none';
+            const input = document.getElementById('new-category-input');
+            if (input) {
+                input.style.display = 'inline-block';
+                input.focus();
+            }
+            return;
+        }
+
+        const toggleDelBtn = e.target.closest('.btn-toggle-del-cat');
+        if (toggleDelBtn) {
+            e.preventDefault();
+            const wrap = document.querySelector('.category-cloud-wrap');
+            if (wrap) {
+                const isActive = wrap.classList.toggle('delete-mode');
+                if (isActive) {
+                    toggleDelBtn.innerHTML = '<?= getIcon("check") ?> <?= t('btn_done') ?>';
+                    toggleDelBtn.style.color = '#15803d';
+                    toggleDelBtn.style.borderColor = '#bbf7d0';
+                } else {
+                    toggleDelBtn.innerHTML = '<?= getIcon("delete") ?> <?= t('btn_delete') ?>';
+                    toggleDelBtn.style.color = '';
+                    toggleDelBtn.style.borderColor = '';
+                }
+            }
+            return;
+        }
+
+        const deleteBadge = e.target.closest('.category-delete-badge');
+        if (deleteBadge) {
+            e.preventDefault();
+            const val = deleteBadge.getAttribute('data-category');
+            if (!val) return;
+
+            const sendDeleteRequest = async (confirmed = false) => {
+                const formData = new FormData();
+                formData.append('save_action', 'delete_category');
+                formData.append('category', val);
+                formData.append('ajax_request', '1');
+                if (confirmed) {
+                    formData.append('confirmed', '1');
+                }
+                const csrfInput = document.querySelector('input[name="csrf_token"]');
+                if (csrfInput) formData.append('csrf_token', csrfInput.value);
+
+                try {
+                    const res = await fetch(window.location.href, { method: 'POST', body: formData });
+                    const json = await res.json().catch(() => ({}));
+
+                    if (json.success) {
+                        const wrap = deleteBadge.closest('.category-cloud-tag-wrap');
+                        if (wrap) wrap.remove();
+
+                        const url = new URL(window.location.href);
+                        if (url.searchParams.get('cat') === val) {
+                            url.searchParams.delete('cat');
+                            url.searchParams.delete('p_pages');
+                            url.searchParams.delete('p_media');
+                            url.searchParams.delete('media_all');
+                            history.pushState(null, '', url.pathname + url.search + url.hash);
+
+                            document.querySelectorAll('.category-cloud-tag').forEach(el => el.classList.remove('active'));
+                            const allTag = document.querySelector('a.category-cloud-tag[href="?cat="]');
+                            if (allTag) allTag.classList.add('active');
+                        }
+
+                        await Promise.all([refreshPageList(), refreshMediaGrid()]);
+                        showToast(json.message);
+                    } else if (json.require_confirm) {
+                        const dialog = document.getElementById('cat-delete-confirm-dialog');
+                        const msgEl = document.getElementById('cat-delete-dialog-message');
+                        const btnCancel = document.getElementById('btn-cat-delete-cancel');
+                        const btnOk = document.getElementById('btn-cat-delete-ok');
+                        
+                        if (dialog && msgEl && btnCancel && btnOk) {
+                            msgEl.textContent = json.message;
+                            dialog.showModal();
+                            
+                            const confirmed = await new Promise((resolve) => {
+                                const onCancel = () => { dialog.close(); resolve(false); };
+                                const onOk = () => { dialog.close(); resolve(true); };
+                                
+                                btnCancel.addEventListener('click', onCancel, { once: true });
+                                btnOk.addEventListener('click', onOk, { once: true });
+                                
+                                dialog.addEventListener('close', () => {
+                                    btnCancel.removeEventListener('click', onCancel);
+                                    btnOk.removeEventListener('click', onOk);
+                                    resolve(false);
+                                }, { once: true });
+                            });
+                            
+                            if (confirmed) {
+                                await sendDeleteRequest(true);
+                            }
+                        }
+                    } else {
+                        showToast(json.message, true);
+                    }
+                } catch (err) {
+                    showToast('<?= t('err_category_delete_failed') ?>', true);
+                }
+            };
+
+            await sendDeleteRequest(false);
+        }
+    });
+
+    const newCatInput = document.getElementById('new-category-input');
+    if (newCatInput) {
+        newCatInput.addEventListener('keydown', async function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const val = newCatInput.value.trim();
+                if (val) {
+                    const formData = new FormData();
+                    formData.append('save_action', 'add_category');
+                    formData.append('category', val);
+                    formData.append('ajax_request', '1');
+                    const csrfInput = document.querySelector('input[name="csrf_token"]');
+                    if (csrfInput) formData.append('csrf_token', csrfInput.value);
+
+                    try {
+                        const res = await fetch(window.location.href, { method: 'POST', body: formData });
+                        const json = await res.json().catch(() => ({}));
+                        
+                        if (json.success) {
+                            let existingTag = null;
+                            document.querySelectorAll('.category-cloud-tag').forEach(tag => {
+                                if (tag.textContent.trim() === val) existingTag = tag;
+                            });
+
+                            if (!existingTag) {
+                                const wrap = document.createElement('span');
+                                wrap.className = 'category-cloud-tag-wrap';
+
+                                const newTag = document.createElement('a');
+                                newTag.href = `?cat=${encodeURIComponent(val)}`;
+                                newTag.className = 'category-cloud-tag';
+                                newTag.textContent = val;
+
+                                const badge = document.createElement('span');
+                                badge.className = 'category-delete-badge';
+                                badge.setAttribute('data-category', val);
+                                badge.title = '<?= t('category_delete_confirm_title') ?>';
+                                badge.innerHTML = '&times;';
+
+                                wrap.appendChild(newTag);
+                                wrap.appendChild(badge);
+
+                                const controlGroup = document.querySelector('.category-control-group');
+                                if (controlGroup) {
+                                    controlGroup.parentNode.insertBefore(wrap, controlGroup);
+                                } else {
+                                    newCatInput.parentNode.insertBefore(wrap, newCatInput);
+                                }
+                            }
+                            showToast(json.message);
+                        } else {
+                            showToast(json.message, true);
+                        }
+                    } catch(err) {
+                        showToast('<?= t('err_category_add_failed') ?>', true);
+                    } finally {
+                        newCatInput.value = '';
+                        newCatInput.style.display = 'none';
+                        const btn = document.querySelector('.btn-add-cat');
+                        if (btn) btn.style.display = 'inline-flex';
+                    }
+                }
+            }
+        });
+    }
+
+    // Category Cloud click handler
+    document.addEventListener('click', async function(e) {
+        const tag = e.target.closest('.category-cloud-tag');
+        if (!tag) return;
+        if (tag.classList.contains('btn-add-cat') || tag.classList.contains('btn-toggle-del-cat')) return;
+
+        e.preventDefault();
+        const url = new URL(tag.href, window.location.href);
+        document.querySelectorAll('.category-cloud-tag').forEach(el => el.classList.remove('active'));
+        tag.classList.add('active');
+
+        url.searchParams.delete('p_pages');
+        url.searchParams.delete('p_media');
+        url.searchParams.delete('media_all');
+        history.pushState(null, '', url.pathname + url.search + url.hash);
+        await Promise.all([refreshPageList(), refreshMediaGrid()]);
+    });
+
+    // Media filter toggle click handler
+    document.addEventListener('click', async function(e) {
+        const btn = e.target.closest('.media-filter-toggle-btn');
+        if (!btn) return;
+
+        e.preventDefault();
+        const url = new URL(btn.href, window.location.href);
+        history.pushState(null, '', url.pathname + url.search + url.hash);
+        await refreshMediaGrid();
+    });
+
+    // Modeless AJAX Pagination click handler
+    document.addEventListener('click', async function(e) {
+        const link = e.target.closest('.pagination-link');
+        if (!link) return;
+
+        e.preventDefault();
+        const url = new URL(link.href, window.location.href);
+        const pPages = url.searchParams.get('p_pages');
+        const pMedia = url.searchParams.get('p_media');
+
+        history.pushState(null, '', url.pathname + url.search + url.hash);
+
+        if (pPages) {
+            await refreshPageList();
+        } else if (pMedia) {
+            await refreshMediaGrid();
+        }
+
+        if (url.hash) {
+            const target = document.querySelector(url.hash);
+            if (target) target.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
     </script>
 </div>
 
 <footer>
-    &copy; 2026 🍊mikanBox v<?= MIKANBOX_VERSION ?> by <a href="http://yoshihiko.com" target="_blank">yoshihiko.com</a>
+    &copy; 2026 🍊mikanBox flat v<?= MIKANBOX_VERSION ?> by <a href="http://yoshihiko.com" target="_blank">yoshihiko.com</a>
 </footer>
 
 <style>
@@ -1790,14 +2350,52 @@ Please enter your request here.`;
 @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
 </style>
 
+<!-- Native Dialog for category delete confirmation -->
+<dialog id="cat-delete-confirm-dialog" class="custom-dialog">
+    <h3 style="margin-top:0; margin-bottom:12px; font-size:1.05rem; display:flex; align-items:center; gap:8px; color:var(--text);">
+        <span class="material-symbols-outlined" style="color: #ef4444;">warning</span> <?= t('category_delete_confirm_title') ?>
+    </h3>
+    <p id="cat-delete-dialog-message" style="font-size:0.9rem; line-height:1.5; margin-bottom:20px; color:#475569;"></p>
+    <div class="dialog-buttons" style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+        <button id="btn-cat-delete-cancel" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;"><?= t('btn_cancel') ?></button>
+        <button id="btn-cat-delete-ok" class="btn btn-small btn-red"><?= t('btn_delete_confirm') ?></button>
+    </div>
+</dialog>
+
+<!-- Native Dialog for media rename confirmation -->
+<dialog id="rename-confirm-dialog" class="custom-dialog">
+    <h3 style="margin-top:0; margin-bottom:12px; font-size:1.05rem; display:flex; align-items:center; gap:8px; color:var(--text);">
+        <span class="material-symbols-outlined" style="color: #f59e0b;">warning</span> <?= t('media_rename_confirm_title') ?>
+    </h3>
+    <p id="rename-dialog-message" style="font-size:0.9rem; line-height:1.5; margin-bottom:20px; color:#475569;"></p>
+    <div class="dialog-buttons" style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+        <button id="btn-rename-cancel" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;"><?= t('btn_rename_cancel') ?></button>
+        <button id="btn-rename-only" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;"><?= t('btn_rename_only') ?></button>
+        <button id="btn-rename-update" class="btn btn-small btn-blue"><?= t('btn_rename_update') ?></button>
+    </div>
+</dialog>
+
+<!-- Native Dialog for global confirmation -->
+<dialog id="global-confirm-dialog" class="custom-dialog">
+    <h3 style="margin-top:0; margin-bottom:12px; font-size:1.05rem; display:flex; align-items:center; gap:8px; color:var(--text);">
+        <span class="material-symbols-outlined" style="color: #ef4444;">warning</span> <span id="global-confirm-title"><?= t('btn_delete') ?></span>
+    </h3>
+    <p id="global-confirm-message" style="font-size:0.9rem; line-height:1.5; margin-bottom:20px; color:#475569;"></p>
+    <div class="dialog-buttons" style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+        <button id="btn-global-confirm-cancel" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;"><?= t('btn_cancel') ?></button>
+        <button id="btn-global-confirm-ok" class="btn btn-small btn-red"><?= t('btn_delete_confirm') ?></button>
+    </div>
+</dialog>
+
+
 <div id="unsaved-modal" class="unsaved-modal-overlay" style="display: none;">
     <div class="unsaved-modal-content">
-        <h3>未保存の変更があります</h3>
-        <p>編集中のデータはまだ保存されていません。<br>保存してから閉じますか？</p>
+        <h3><?= t('modal_unsaved_title') ?></h3>
+        <p><?= t('modal_unsaved_text') ?></p>
         <div class="unsaved-modal-actions">
-            <button id="btn-modal-save" class="btn btn-blue"><?= getIcon('save') ?> 保存して閉じる</button>
-            <button id="btn-modal-discard" class="btn btn-red"><?= getIcon('delete') ?> 破棄して閉じる</button>
-            <button id="btn-modal-cancel" class="btn btn-gray">キャンセル</button>
+            <button id="btn-modal-save" class="btn btn-blue"><?= getIcon('save') ?> <?= t('btn_save_and_close') ?></button>
+            <button id="btn-modal-discard" class="btn btn-red"><?= getIcon('delete') ?> <?= t('btn_discard_and_close') ?></button>
+            <button id="btn-modal-cancel" class="btn btn-gray"><?= t('btn_cancel') ?></button>
         </div>
     </div>
 </div>

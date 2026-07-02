@@ -70,7 +70,7 @@ function saveData($dir, $id, $data) {
     // Allow slashes for hierarchy but prevent directory traversal (no ..)
     $id = str_replace('..', '', $id);
     $id = ltrim($id, '/\\');
-    $id = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $id);
+    $id = preg_replace('/[^a-zA-Z0-9_\-\/\.]/', '', $id);
     if (empty($id)) return false;
 
     // Create directory path if it doesn't exist
@@ -94,7 +94,7 @@ function loadData($dir, $id) {
     // Allow slashes for hierarchy but prevent directory traversal
     $id = str_replace('..', '', $id);
     $id = ltrim($id, '/\\');
-    $id = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $id);
+    $id = preg_replace('/[^a-zA-Z0-9_\-\/\.]/', '', $id);
     if (empty($id)) return null;
 
     $filePath = $dir . '/' . $id . '.json';
@@ -170,7 +170,7 @@ function getSortedPostIds() {
 function deleteData($dir, $id) {
     $id = str_replace('..', '', $id);
     $id = ltrim($id, '/\\');
-    $id = preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $id);
+    $id = preg_replace('/[^a-zA-Z0-9_\-\/\.]/', '', $id);
     if (empty($id)) return false;
 
     $filePath = $dir . '/' . $id . '.json';
@@ -653,4 +653,62 @@ function resolveMediaPath($url) {
         return $url;
     }
     return 'media/' . $url;
+}
+
+/**
+ * Load settings from json file.
+ */
+function loadSettings() {
+    $settingsFile = SETTINGS_FILE;
+    if (file_exists($settingsFile)) {
+        return json_decode(file_get_contents($settingsFile), true) ?: [];
+    }
+    return [];
+}
+
+/**
+ * Save settings to json file.
+ */
+function saveSettings($settings) {
+    $settingsFile = SETTINGS_FILE;
+    return file_put_contents($settingsFile, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+}
+
+/**
+ * Resolves the final safe save name of an uploaded media file, prepending
+ * the current active category prefix and avoiding duplicates.
+ *
+ * @param string $filename Original uploaded filename
+ * @param string $category Current active category (can be empty)
+ * @return string Resolved filename
+ */
+function resolveMediaSaveName($filename, $category) {
+    // 1. Sanitize filename (remove directory traversal etc.)
+    $filename = basename($filename);
+    $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $filename);
+    
+    // Extract name and extension
+    $ext = pathinfo($filename, PATHINFO_EXTENSION);
+    $name = pathinfo($filename, PATHINFO_FILENAME);
+    if (empty($name)) {
+        $name = 'upload';
+    }
+    
+    // 2. Auto-prefix category if appropriate (No-Double-Prefix Rule: ^[a-zA-Z0-9]+_)
+    if (!empty($category) && !preg_match('/^[a-zA-Z0-9]+_/', $filename)) {
+        $name = $category . '_' . $name;
+    }
+    
+    // 3. Resolve duplicates
+    $baseName = $name;
+    $targetFilename = $ext !== '' ? $baseName . '.' . $ext : $baseName;
+    $mediaDir = MEDIA_DIR;
+    
+    $counter = 1;
+    while (file_exists($mediaDir . '/' . $targetFilename)) {
+        $targetFilename = ($ext !== '') ? ($baseName . '_' . $counter . '.' . $ext) : ($baseName . '_' . $counter);
+        $counter++;
+    }
+    
+    return $targetFilename;
 }
