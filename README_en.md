@@ -1,22 +1,37 @@
-# 🍊mikanBox
+# 🍊mikanBox flat
+
+[日本語 README →](README.md)
 
 **AI-era, parts-assembly, ultra-lightweight CMS**
 
-🍊mikanBox is a file-based CMS designed to build and operate small-to-medium websites (a few to a few dozen pages) in the fastest and most secure way possible. No database required. It works simply by placing it on a PHP-enabled server.
+🍊mikanBox flat is a file-based CMS designed to build and operate small-to-medium websites (a few to a few dozen pages) in the fastest and safest way possible. No database required — it works simply by placing it on a PHP-enabled server.
+
+> 🍊 *Mikan* is the Japanese word for a small, easy-to-peel mandarin orange — the fruit that gave mikanBox its name.
+
+🍊mikanBox comes in two versions: **🍊mikanBox flat** (this repository), a file-based CMS for quickly launching small sites, and **🍊mikanBox**, which uses SQLite and stays comfortable to use even on sites with more pages. Pick whichever fits your use case — data can be migrated between the two.
+
+For campaign or event sites, shop sites — sites with few pages but that need regular updates — use **this 🍊mikanBox flat**. For sites you'll run long-term and expect to keep growing, use **🍊mikanBox**. Data can be migrated between the two.
+
+[JSON version (flat) vs. SQLite version →](#flat)
+
+[SQLite version 🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
 
 ---
 
 ## Features
 
 - **File-based (JSON)** — No database required. Just place on a PHP-enabled server
-- **Modeless UI** — No page transitions; all work completed on a single screen for a snappy experience
-- **Markdown Support** — Easily edit and reuse content
-- **Component Structure** — Reusable and reorderable building blocks (parts)
+- **Modeless UI** — No page transitions; nearly all work completed on a single screen for a snappy experience
+- **Markdown Support** — Easy to edit content, and also well-suited as a content archive
+- **Filter by Category** — Narrow down pages and images by category; use categories as workspaces
+- **Images Shown by Filename Alone** — Place images without thinking about file paths
+- **Component Structure** — Page templates and parts you can combine and reuse
 - **Per-component Scoped CSS** — Write CSS in small scopes without worrying about interference
-- **AI-generated Code Works As-Is** — No manual design work needed
-- **AI Agent Integration (MCP)** — AI understands the site structure and directly reads/writes files
+- **AI-generated Code Works As-Is** — Also supports running without any manual design work
+- **AI Agent Integration (MCP)** — AI understands the site structure and design conventions, and reads/writes files directly
+- **DESIGN.md Management** — Manage instructions for AI right on the site, and hand them to AI
 - **Multimodal AI Support** — AI generates images and sends/places them directly in the media folder
-- **Static (SSG), Dynamic, or Mixed** — Can be published as a high-speed static site
+- **Static (SSG), Dynamic, or Mixed** — Can be a fast static site, or mix static and dynamic pages
 - **DB Less DB** — Embed data in pages and output via API. Can also be used as a headless CMS
 - **Podcast** — Auto-generate RSS for podcast distribution
 
@@ -28,9 +43,31 @@
 
 ---
 
+<a name="flat"></a>
+
+## JSON Version (flat, this repo) vs. SQLite Version
+
+| | 📂 JSON version (flat, this repo) | 🗄️ SQLite version |
+| :--- | :--- | :--- |
+| Best for | Sites with fewer pages (up to ~100 or so) | Sites that will keep growing in page count |
+| Storage | JSON files | (single DB file) |
+| Requirements | PHP 8.0+ only | PHP 8.0+ + SQLite3 extension (standard on most hosting providers) |
+| Approval workflow & preview share URL | − | ○ |
+| Revision history & restore to a previous version | − | ○ |
+| Self-service password reset | − (requires manually editing the settings file) | ○ (security question) |
+| Keyword search box in the admin panel | − | ○ |
+
+> [!TIP]
+> For campaign or event sites, shop sites — sites with few pages but that need regular updates — use **this 🍊mikanBox flat**. For sites you'll run long-term and expect to keep growing, use **🍊mikanBox**. Data can be migrated between the two, so you can switch later.
+
+[SQLite version 🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
+
+---
+
 ## Requirements
 
-- A web server with PHP support (no database required)
+- A web server with PHP 8.0 or later (no database required)
+- Locally, you don't even need a server: just open the folder containing 🍊mikanBox flat with an AI coding tool like Claude Code, and the AI can build the site and manage content directly. Export as static files and upload via FTP.
 
 ---
 
@@ -41,6 +78,12 @@
 3. Access `mikanBox/admin.php` to set your admin password
 
 That's all.
+
+---
+
+## Intended Use & Scale
+
+**Ideal for:** Personal sites, small business/corporate sites, event pages, and portfolios (Guideline: up to ~100 pages)
 
 ---
 
@@ -56,12 +99,13 @@ That's all.
 **Short-term Pages** (landing pages, event pages, etc.)
 
 - Paste AI-generated HTML/CSS/JS directly to publish
-- Elimination of manual design work
+- No manual design work needed
 
 ### Design (Components)
 
-- **Page Components** — Wrappers that define the overall layout of the page
+- **Page Components** — Wrappers that define the overall layout of a page
 - **Parts Components** — Reusable parts embedded in pages or other components
+- **AI-Instruction Components** — Things like DESIGN.md, managing instructions read by AI as components too
 
 Components contain HTML and scoped CSS, and can be nested.
 
@@ -86,13 +130,14 @@ Export all pages as static HTML with a single click. You can also mix static and
 
 - AI-generated HTML pages can be pasted directly into the content field for instant publishing
 - The codebase is compact and simply structured, making it easy for AI to understand the specifications
-- MCP support allows AI agents to understand the site structure and directly edit/update contents or components
-- Multimodal input (like images) from AI can be directly received, automating uploads to the media folder and placement on pages
-- Simple specifications mean AI can be tasked to create custom designs and plugin-like components without needing detailed explanations
+- MCP support allows AI agents to understand the site structure and directly edit/update content or components
+- Multimodal input (like images) from AI can be received directly, automating uploads to the media folder and placement on pages
+- AI instructions are managed as components too — hand DESIGN.md or BRAND.md to AI, or have AI generate them for you
+- Simple specifications mean it's easy to have AI add new functionality
 
 ### MCP Support
 
-mikanBox supports the Model Context Protocol (MCP), providing a bridge for AI agents to safely interact with server files. This allows for page creation, design adjustments, and component building through AI conversation alone, without the user ever needing to touch the admin panel.
+mikanBox supports the Model Context Protocol (MCP), providing a bridge for AI agents to safely operate on server files. This lets page creation, design changes, and component building all happen through conversation with AI alone, without the user ever touching the admin panel.
 
 ---
 
@@ -100,7 +145,7 @@ mikanBox supports the Model Context Protocol (MCP), providing a bridge for AI ag
 
 ### Loading Other Pages or External Markdown
 
-You can load other pages or Markdown files from external sites like GitHub. This is useful for embedding frequently updated sections (like news) into complex pages.
+You can load other pages or Markdown files from external sites like GitHub. This is handy for embedding frequently updated sections (like news) inside otherwise complex pages.
 
 ### Embed Data in a Page
 
@@ -108,7 +153,7 @@ You can load other pages or Markdown files from external sites like GitHub. This
 {{DATA:price:GHOST}}4800{{/DATA}}
 ```
 
-Reference from the same page: `{{POST_MD::price}}`  
+Reference from the same page: `{{POST_MD::price}}`
 Reference from another page: `{{POST_MD:pageID:price}}`
 
 ### Table-style Data (DB Less DB)
@@ -124,7 +169,7 @@ Reference: `{{POST_MD:pageID#row1:name}}`
 
 ### Publish as an API
 
-Set a page's status to **DB** to expose its data externally as a JSON API.
+Set a page's status to **DB** to expose its data externally as a JSON API. It can also be used as a headless CMS.
 
 ```
 https://yoursite.com/api/pageID
@@ -132,7 +177,7 @@ https://yoursite.com/api/pageID
 
 ### CSV Import
 
-The site menu includes a built-in feature to convert CSV files (from Excel, etc.) into `{{DATAROW}}` format in bulk.
+The site menu includes a built-in feature to bulk-convert CSV files (from Excel, etc.) into `{{DATAROW}}` format.
 
 ---
 
@@ -154,7 +199,7 @@ Then simply submit that feed to Apple Podcasts, Spotify, Amazon Music, or other 
 | :---| :---|
 | `/sitemap.xml` | XML Sitemap |
 | `/rss.xml`     | RSS Feed |
-| `/podcast.xml` | Podcast RSS (Includes only "podcast" category) |
+| `/podcast.xml` | Podcast RSS (podcast category only) |
 
 ---
 
@@ -162,22 +207,16 @@ Then simply submit that feed to Apple Podcasts, Spotify, Amazon Music, or other 
 
 - Since no database is used, there is no attack surface for SQL injection
 - Small codebase with no dependency on plugins
-- By operating locally and uploading static files, you can keep PHP and JSON files out of the public directory, minimizing tampering risks
+- By operating locally and uploading static files, you can keep PHP and JSON files out of the public directory, minimizing tampering risk
 - Renaming the admin directory makes the URL harder to guess
 - `.htaccess` restricts direct access to management files
 
 ---
 
-## Intended Use & Scale
-
-**Ideal for:** Personal sites, small business/corporate sites, event pages, and portfolios (Guideline: up to 50 pages)
-
----
-
 ## Documentation
 
-- [日本語ヘルプ](https://yoshihiko.com/mikanbox/help_ja.html)
-- [English Help](https://yoshihiko.com/mikanbox/help_en.html)
+- [日本語ヘルプ →](https://yoshihiko.com/mikanbox/help_ja.html)
+- [English Help →](https://yoshihiko.com/mikanbox/help_en.html)
 
 ---
 

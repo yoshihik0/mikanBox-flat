@@ -1,31 +1,35 @@
 # 🍊mikanBox flat
 
-[English README →](#english)
+[English README →](README_en.md)
 
 **AI時代のパーツ組み立て型・超軽量CMS**
 
-🍊mikanBox　flatは、数ページから数十ページ規模のWebサイトを、最速かつ安全に構築・運用するために設計されたファイルベースCMSです。データベース不要。PHPが使えるサーバーに置くだけで動きます。
+🍊mikanBox flatは、数ページから数十ページ規模のWebサイトを、最速かつ安全に構築・運用するために設計されたファイルベースCMSです。データベース不要。PHPが使えるサーバーに置くだけで動きます。
 
-🍊mikanBoxには、小規模サイトを手軽に作れるファイルベースCMSの🍊mikanBox flatと、SQLiteを使用してページ数の多いサイトにも使いやすい🍊mikanBoxがあります。用途に応じてお選びください。両者間では、データの移行も可能です。
+🍊mikanBoxには、小規模サイトを手軽に作れるファイルベースCMSの🍊mikanBox flat（本リポジトリ）と、SQLiteを使用してページ数の多いサイトにも使いやすい🍊mikanBoxがあります。用途に応じてお選びください。両者間では、データの移行も可能です。
 
-SQLite版　🍊mikanBox
-[https://github.com/yoshihik0/mikanBox](https://github.com/yoshihik0/mikanBox)
+キャンペーンやイベントのサイト、店舗のサイトなど、ページ数は少ないけど更新は必要というサイトには、こちらの🍊mikanBox flat、長期的に運用し、ページの増加が見込まれるサイトは、🍊mikanBoxをご利用ください。両者は、データの移行も可能です。
+
+[JSON版（flat）とSQLite版の違い →](#flat)
+
+[SQLite版　🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
 
 ---
 
 ## 特長
 
 - **ファイルベース（JSON）** — データベース不要。PHPの動くサーバーに置くだけ
-- **モードレスUI** — ページ遷移なし、1画面で全作業完結。軽快な操作感
-- **カテゴリでページや画像を絞り込み** — 情報を整理しやすい構造
-- **Markdown対応** — コンテンツを簡単に編集・再利用
-- **コンポーネント構造** — 再利用・並び替えが可能なパーツ管理
-- **コンポーネント単位のスコープCSS** — 干渉を気にせず小さい範囲でCSSを書ける
-- **AI生成コードをそのまま配置可能** — 手作業でのデザイン不要
-- **design.mdなどAIへの指示を管理・提供・** — AIとのコミュニケーションを効率化
-- **AIエージェント連携（MCP）** — AIがサイト構造を理解し、直接ファイルを読み書き
+- **モードレスUI** — ページ遷移なし、1画面でほぼ全作業完結。軽快な操作感
+- **Markdown対応** — コンテンツを簡単に編集可能、情報のアーカイブとしても適している
+- **カテゴリで絞り込み** — ページや画像をカテゴリで絞り込み、ワークスペースとして利用できる
+- **ファイル名だけで画像表示** — ファイルのパスを意識せずに画像を張り込める
+- **コンポーネント構造** — 組み合わせて利用できるページテンプレートやパーツ
+- **コンポーネント単位のスコープCSS** — 干渉を気にせず小さい範囲でCSSが書ける
+- **AI生成コードをそのまま配置可能** — 手作業でのデザインなしでの運用にも対応
+- **AIエージェント連携（MCP）** — AIがサイト構造やデザイン基調などを理解し、直接ファイルを読み書き
+- **DESIGN.mdの管理** — AIへの指示もサイトで管理し、AIに伝えられる
 - **マルチモーダルAI対応** — AIが画像を生成し、そのままメディアフォルダへ送信・配置
-- **静的（SSG）・動的・混在** — レスポンスの速い静的サイトにもできる
+- **静的（SSG）・動的・混在** — レスポンスの速い静的サイトも、静的・動的の混在も可能
 - **DB Less DB** — ページにデータを埋め込んでAPIで出力。ヘッドレスCMSにも
 - **ポッドキャスト** — RSSを自動生成してポッドキャスト配信も可能
 
@@ -37,9 +41,31 @@ SQLite版　🍊mikanBox
 
 ---
 
+<a name="flat"></a>
+
+## JSON版（flat・本リポジトリ）とSQLite版の違い
+
+| | 📂 JSON版（flat・本リポジトリ） | 🗄️ SQLite版 |
+| :--- | :--- | :--- |
+| 主な用途 | ページ数の少ないサイト（〜100ページ程度） | ページ数を増やしていくサイト |
+| ストレージ | jsonファイル | （単一DBファイル） |
+| 動作要件 | PHP 8.0以上のみ | PHP 8.0以上 + SQLite3拡張（多くのレンタルサーバーで標準有効） |
+| 承認ワークフロー・プレビュー共有URL | − | ○ |
+| 編集履歴の保存・過去バージョンへの復元 | − | ○ |
+| パスワードを忘れた時のセルフリセット | − （設定ファイルの手動書き換えが必要） | ○（秘密の質問） |
+| 管理画面のキーワード検索ボックス | − | ○ |
+
+> [!TIP]
+> キャンペーンやイベントのサイト、店舗のサイトなど、ページ数は少ないけど更新は必要というサイトには、**🍊mikanBox flat**、長期的に運用し、ページを増やしていくことが見込まれるサイトは、こちらの**🍊mikanBox**をご利用ください。両者は、データの移行も可能ですので、あとから変更することもできます。
+
+[SQLite版　🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
+
+---
+
 ## 動作要件
 
-- PHPが使えるWebサーバー（データベース不要）
+- PHP 8.0以上が使えるWebサーバー（データベース不要）
+- ローカルで、🍊mikanBox flatをおいたフォルダをClaude CodeなどのAIで開くだけでも、AIによるサイトの構築・コンテンツ管理が可能です。（静的ファイルで書き出し、FTPでサーバーにアップ）
 
 ---
 
@@ -50,6 +76,12 @@ SQLite版　🍊mikanBox
 3. `mikanBox/admin.php` にアクセスして管理者パスワードを設定
 
 以上で完了です。
+
+---
+
+## 想定する用途・規模
+
+**適している用途：** 個人サイト、小規模店舗・企業サイト、イベントページ、ポートフォリオ（目安：100ページ以内）
 
 ---
 
@@ -71,7 +103,7 @@ SQLite版　🍊mikanBox
 
 - **ページ・コンポーネント** — ページ全体のレイアウトを定義するラッパー
 - **パーツ・コンポーネント** — ページや他のコンポーネントに埋め込む再利用パーツ
-- **AI指示・コンポーネント** — design.mdやbrand.mdなどのデザインへの指示
+- **AI指示・コンポーネント** — DESIGN.mdなど、AIに読ませる指示も部品として管理
 
 コンポーネントはHTMLとスコープ付きCSSを持ち、入れ子にもできます。
 
@@ -98,8 +130,8 @@ SQLite版　🍊mikanBox
 - コードベースがコンパクトで構造が単純なため、AIが仕様を理解しやすい
 - MCP対応により、AIエージェントがサイトの構造を理解し、直接コンテンツやパーツを編集・更新可能
 - AIからのマルチモーダル入力（画像など）を直接受け取り、メディアフォルダへのアップロードとページへの配置を自動化
-- 仕様が単純なので、AIに説明不要で専用のデザインや機能・プラグイン相当のパーツを作らせられる
-- デザインの指示であるdesign.mdやサイト全体のコンセプトであるbrand.mdなどの指示を保存し、AIに伝えることができる
+- AIへの指示もコンポーネントとして管理。DESIGN.mdやBRAND.mdをAIに伝えたり、逆に生成させたりできる
+- 仕様が単純なので、AIに機能を追加させることも容易
 
 ### MCPへの対応
 
@@ -135,7 +167,7 @@ Model Context Protocol (MCP) に対応しており、AIエージェントがサ�
 
 ### APIとして公開
 
-ページのステータスを **DB** にすると、データをJSON APIとして外部公開できます。
+ページのステータスを **DB** にすると、データをJSON APIとして外部公開できます。ヘッドレスCMSとしても利用できます。
 
 ```
 https://yoursite.com/api/pageID
@@ -171,7 +203,7 @@ https://yoursite.com/podcast.xml
 
 ## セキュリティ
 
-- データベース不使用のためSQLインジェクションの攻撃対象がない
+- すべてのDB操作にプリペアドステートメントを使用し、SQLインジェクションを防止
 - 小さなコードベース・プラグイン依存なし
 - ローカルで運用して静的ファイルをアップロードするとPHPファイルやJSONをパブリックディレクトリに置かずに済み、改ざんリスクを最小化
 - 管理画面のディレクトリ名を変更することでURLを推測されにくくできる
@@ -179,37 +211,13 @@ https://yoursite.com/podcast.xml
 
 ---
 
-## 想定する用途・規模
-
-**適している用途：** 個人サイト、小規模店舗・企業サイト、イベントページ、ポートフォリオ（目安：50ページ以内）
-
----
-
 ## ドキュメント
 
-- [日本語ヘルプ](https://yoshihiko.com/mikanbox/help_ja.html)
-- [English Help](https://yoshihiko.com/mikanbox/help_en.html)
+- [日本語ヘルプ →](https://yoshihiko.com/mikanbox/help_ja.html)
+- [English Help →](https://yoshihiko.com/mikanbox/help_en.html)
 
 ---
 
 ## ライセンス
 
 MIT License — Copyright (c) 2026 [yoshihiko.com](http://yoshihiko.com)
-
----
-
-<a name="english"></a>
-
-# 🍊 mikanBox — English Summary
-
-Mikan is a Japanese mandarin orange.
-
-🍊mikanBox comes in two flavors: 🍊mikanBox flat, a file-based CMS for quickly building small sites, and 🍊mikanBox, which uses SQLite and scales comfortably to sites with many pages. Data can be migrated between the two.
-
-**AI-era, parts-assembly, ultra-lightweight CMS**
-
-A file-based CMS for building small-to-medium websites (up to ~50 pages) with no database required. Upload to any PHP-enabled server and you're ready to go.
-
-**Key features:** Modeless single-screen UI · Markdown + HTML/CSS/JS · Scoped CSS per component · AI-generated code works as-is · Static site generation (SSG) · DB Less DB (embedded data + API) · Podcast RSS
-
-[Full documentation in English →](README_en.md)

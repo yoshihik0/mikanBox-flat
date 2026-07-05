@@ -71,11 +71,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
         }
     } elseif ($_POST['login_action'] === 'login' && !empty($passwordHash)) {
         // Normal login
-        if (password_verify($_POST['password'] ?? '', $passwordHash)) {
+        $rateLimitId = getClientIp() . '|login';
+        $lockedRemain = checkLoginRateLimit($rateLimitId);
+        if ($lockedRemain > 0) {
+            $loginError = t('err_rate_limited', (int)ceil($lockedRemain / 60));
+        } elseif (password_verify($_POST['password'] ?? '', $passwordHash)) {
+            clearLoginAttempts($rateLimitId);
             $_SESSION['admin_logged_in'] = true;
             header('Location: ' . basename(__FILE__));
             exit;
         } else {
+            recordLoginFailure($rateLimitId);
             $loginError = t('err_wrong_password');
         }
     }
@@ -119,8 +125,8 @@ if (!$isLoggedIn && (!$isDemoMode || isset($_GET['login']))) {
             <?php endif; ?>
         <?php endif; ?>
             <p class="login-hint">
-                <?= t('admin_forgot_password') ?><br>
-                <?= t('admin_forgot_password_hint') ?>
+                <?= t('admin_forgot_password_flat') ?><br>
+                <?= t('admin_forgot_password_hint_flat') ?>
             </p>
     </div>
 </body>
@@ -272,18 +278,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             }
         }
         if ($isReserved) {
-            $message = "スラッグ「{$id}」はシステムで予約されています。別のスラッグを使用してください。";
+            $message = t('err_slug_reserved', $id);
         } // Duplicate slug check: warn if creating new page with existing ID
         elseif (empty($oldId) && loadData(POSTS_DIR, $id) !== null) {
-            $message = t('err_slug_exists') ?: "スラッグ「{$id}」はすでに存在します。別のスラッグを使用するか、既存ページを編集してください。";
+            $message = t('err_slug_exists', $id);
         } else {
 
         $updatedAt = $_POST['updated_at'] ?? date('Y-m-d H:i:s');
+
+        // Auto-set the update date to "now" when a page transitions from non-public
+        // (draft/db) to public, so it reflects the actual publish moment rather than
+        // whatever was left in the (manually editable) date field while still a draft.
+        // Once public, further edits keep whatever date is already in that field
+        // (nothing here bumps it automatically), so minor fixes don't move the date.
+        $existingPageData = loadData(POSTS_DIR, $oldId ?: $id);
+        $wasPublic = $existingPageData && in_array($existingPageData['status'] ?? 'draft', ['public_dynamic', 'public_static'], true);
+        $isPublicNow = in_array($status, ['public_dynamic', 'public_static'], true);
+        if (!$wasPublic && $isPublicNow) {
+            $updatedAt = date('Y-m-d H:i:s');
+        }
+
         $data = [
             'title' => $_POST['title'] ?? '',
             'category' => trim($_POST['category'] ?? ''),
             'status' => $status,
             'description' => $_POST['description'] ?? '',
+            'memo' => $_POST['memo'] ?? '',
             'keywords' => $_POST['keywords'] ?? '',
             'ogp_image' => $_POST['ogp_image'] ?? '',
             'content_md' => $_POST['content_md'] ?? '',
@@ -360,7 +380,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     }
     elseif ($_POST['save_action'] === 'delete_page') {
         $id = $_POST['id'];
-        if ($id !== 'index' && deleteData(POSTS_DIR, $id)) {
+        // index has no special protection: a missing page (including index) already falls
+        // back to the 404 page in MikanBoxRenderer::render(), so there's nothing unsafe
+        // about deleting it like any other page.
+        if (deleteData(POSTS_DIR, $id)) {
             $_SESSION['admin_message'] = t('msg_page_deleted', $id);
             header("Location: admin.php?view=pages");
             exit;
@@ -381,11 +404,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
 
         // Duplicate slug check: warn if creating new component with existing ID
         if (empty($oldId) && loadData(COMPONENTS_DIR, $id) !== null) {
-            $message = t('err_slug_exists') ?: "コンポーネントID「{$id}」はすでに存在します。別のIDを使用するか、既存コンポーネントを編集してください。";
+            $message = t('err_slug_exists', $id);
         } else {
         $data = [
             'html' => $_POST['html'],
             'css' => $_POST['css'] ?? '',
+            'memo' => $_POST['memo'] ?? '',
             'is_global' => !isset($_POST['use_scope']),
             'is_wrapper' => ($compType === 'wrapper'),
             'is_ai_doc' => ($compType === 'ai_doc'),
@@ -406,7 +430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $id = $_POST['id'];
         if (deleteData(COMPONENTS_DIR, $id)) {
             $_SESSION['admin_message'] = t('msg_comp_deleted', $id);
-            header("Location: admin.php?view=components");
+            header("Location: admin.php?view=components#design");
             exit;
         } else {
             $message = t('err_comp_delete');
@@ -431,6 +455,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                     
                     if (!is_dir(MEDIA_DIR)) mkdir(MEDIA_DIR, 0777, true);
                     if (move_uploaded_file($tmpPath, $targetPath)) {
+                        if ($ext === 'svg') {
+                            file_put_contents($targetPath, sanitizeSvgContent(file_get_contents($targetPath)));
+                        }
                         $message = t('msg_media_uploaded', $resolvedName);
                     } else {
                         $message = t('err_upload_failed');
@@ -1074,7 +1101,7 @@ function getIcon($name) {
         <div class="category-cloud">
             <span class="category-cloud-label"><?= t('category_cloud_label') ?></span>
             <a href="?cat=" class="category-cloud-tag <?= $selectedCat === '' ? 'active' : '' ?>">
-                <?= t('all_pages') ?? 'すべて' ?>
+                <?= t('all_pages') ?>
             </a>
             <?php foreach ($allCategories as $c): ?>
                 <span class="category-cloud-tag-wrap">
@@ -1233,13 +1260,18 @@ function getIcon($name) {
         } catch(err) {}
     }
 
+    // save_action値がメディア操作（AJAXで別途ハンドリングされる）かどうかを判定
+    function isMediaFormAction(action) {
+        return action === 'resize_media' || action === 'delete_media' || action === 'rename_media';
+    }
+
     // Resize, rename and delete media forms - event delegation
     document.addEventListener('submit', async function(e) {
         const form = e.target;
         const actionInput = form.querySelector('input[name="save_action"]');
         if (!actionInput) return;
         const action = actionInput.value;
-        if (action === 'resize_media' || action === 'delete_media' || action === 'rename_media') {
+        if (isMediaFormAction(action)) {
             e.preventDefault();
             
             if (action === 'delete_media') {
@@ -1767,11 +1799,14 @@ function getIcon($name) {
         }));
         
         // Unsaved changes tracker
+        // Scoped to the page/design editor containers only (if server-rendered open on initial load).
+        // Elements outside an open editor (e.g. inline status dropdowns in the list) must not
+        // mark the app as dirty, or the unsaved-changes modal pops up with no editor open.
         window.isDirty = false;
-        document.querySelectorAll('input, textarea, select').forEach(el => {
-            el.addEventListener('input', () => { window.isDirty = true; });
-            el.addEventListener('change', () => { window.isDirty = true; });
-        });
+        const initialPageEditor = document.getElementById('page-editor');
+        const initialDesignEditor = document.getElementById('design-editor');
+        if (initialPageEditor) bindDirtyTrackers(initialPageEditor);
+        if (initialDesignEditor) bindDirtyTrackers(initialDesignEditor);
         
         window.addEventListener('beforeunload', function (e) {
             if (window.isDirty) {
@@ -1873,7 +1908,7 @@ function getIcon($name) {
                     const originalBtnText = saveBtn.innerHTML;
                     const originalModalText = document.getElementById('btn-modal-save').innerHTML;
                     
-                    const savingHtml = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> 保存中...';
+                    const savingHtml = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> ' + <?= json_encode(t('msg_saving')) ?>;
                     saveBtn.innerHTML = savingHtml;
                     saveBtn.disabled = true;
                     document.getElementById('btn-modal-save').innerHTML = savingHtml;
@@ -1881,13 +1916,24 @@ function getIcon($name) {
                     
                     try {
                         const formData = new FormData(form);
-                        formData.append(saveBtn.name || 'save_action', saveBtn.value);
+                        // Only override save_action when the button itself declares a name
+                        // (e.g. delete buttons). Some save buttons (like the component editor's)
+                        // rely solely on the form's hidden save_action input and have no name/value
+                        // of their own — appending an empty pair here would clobber that hidden value.
+                        if (saveBtn.name) {
+                            formData.append(saveBtn.name, saveBtn.value);
+                        }
                         formData.append('ajax_request', '1');
                         const res = await fetch(window.location.href, { method: 'POST', body: formData });
                         if (res.ok) {
-                            window.isDirty = false;
-                            unsavedModal.style.display = 'none';
-                            spaHandlePendingNavigation();
+                            const json = await res.json().catch(() => ({}));
+                            if (json.success) {
+                                window.isDirty = false;
+                                unsavedModal.style.display = 'none';
+                                spaHandlePendingNavigation();
+                            } else {
+                                showToast(json.message || '<?= t('err_save_failed') ?>', true);
+                            }
                         } else {
                             showToast('<?= t('err_save_failed') ?>', true);
                             unsavedModal.style.display = 'none';
@@ -2044,7 +2090,7 @@ function getIcon($name) {
         // Skip AJAX forms (like media forms) that are handled elsewhere
         const actionInput = form.querySelector('input[name="save_action"]');
         const action = actionInput ? actionInput.value : '';
-        if (action === 'resize_media' || action === 'delete_media' || action === 'rename_media') {
+        if (isMediaFormAction(action)) {
             return;
         }
 

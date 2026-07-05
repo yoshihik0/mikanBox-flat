@@ -25,6 +25,27 @@ function secureDirectory($dirPath) {
 }
 // Protect the data directory
 secureDirectory(DATA_DIR);
+
+// --- Security: Prevent uploaded files (e.g. disguised .php) from being executed ---
+function secureMediaDirectory($dirPath) {
+    if (!is_dir($dirPath)) {
+        @mkdir($dirPath, 0777, true);
+    }
+    $htaccessPath = $dirPath . '/.htaccess';
+    if (!file_exists($htaccessPath)) {
+        $content = "<FilesMatch \"\\.ph(p[3457]?|t|tml)\$\">\n"
+                 . "    <IfModule mod_authz_core.c>\n"
+                 . "        Require all denied\n"
+                 . "    </IfModule>\n"
+                 . "    <IfModule !mod_authz_core.c>\n"
+                 . "        Order deny,allow\n"
+                 . "        Deny from all\n"
+                 . "    </IfModule>\n"
+                 . "</FilesMatch>\n";
+        @file_put_contents($htaccessPath, $content);
+    }
+}
+secureMediaDirectory(MEDIA_DIR);
 // -----------------------------------------------------------------
 // Timezone settings
 date_default_timezone_set('Asia/Tokyo');
