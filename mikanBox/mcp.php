@@ -22,6 +22,11 @@ function mcpErrorResponse($id, $code, $message) {
     return ['jsonrpc' => '2.0', 'id' => $id, 'error' => ['code' => $code, 'message' => $message]];
 }
 
+// id引数必須チェック（各tool*関数の冒頭で共通利用）
+function mcpRequireId($id) {
+    return empty($id) ? ['error' => t('mcp_err_id_required')] : null;
+}
+
 function toolContent($data) {
     return [
         'content' => [[
@@ -97,7 +102,7 @@ function toolDefinitions() {
         ],
         [
             'name' => 'delete_page',
-            'description' => 'ページを削除する。index ページは削除不可。',
+            'description' => 'ページを削除する。',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -230,43 +235,43 @@ function toolListPages() {
 }
 
 function toolGetPage($id) {
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
     $d = loadData(POSTS_DIR, $id);
-    if ($d === null) return ['error' => "ページ '{$id}' が見つかりません。"];
+    if ($d === null) return ['error' => t('mcp_err_page_not_found', $id)];
     $d['id'] = $id;
     return $d;
 }
 
 function toolCreatePage($args) {
     $id = $args['id'] ?? '';
-    if (empty($id))            return ['error' => 'id は必須です。'];
-    if (empty($args['title'])) return ['error' => 'title は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
+    if (empty($args['title']))    return ['error' => t('mcp_err_title_required')];
 
     if (loadData(POSTS_DIR, $id) !== null) {
-        return ['error' => "ページ '{$id}' はすでに存在します。更新する場合は update_page を使ってください。"];
+        return ['error' => t('mcp_err_page_already_exists', $id)];
     }
 
     $coreDirName = basename(CORE_DIR);
     foreach ([$coreDirName, 'media', 'api'] as $reserved) {
         if (strpos($id . '/', $reserved . '/') === 0 || $id === $reserved) {
-            return ['error' => "スラッグ '{$id}' は予約済みです。"];
+            return ['error' => t('mcp_err_slug_reserved', $id)];
         }
     }
 
     $data = buildPageData($args);
     if (saveData(POSTS_DIR, $id, $data)) {
-        return ['success' => true, 'id' => $id, 'message' => "ページ '{$id}' を作成しました。"];
+        return ['success' => true, 'id' => $id, 'message' => t('mcp_success_page_created', $id)];
     }
-    return ['error' => 'ページの保存に失敗しました。'];
+    return ['error' => t('mcp_err_page_save_failed')];
 }
 
 function toolUpdatePage($args) {
     $id = $args['id'] ?? '';
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
 
     $existing = loadData(POSTS_DIR, $id);
     if ($existing === null) {
-        return ['error' => "ページ '{$id}' が見つかりません。作成する場合は create_page を使ってください。"];
+        return ['error' => t('mcp_err_page_not_found_for_update', $id)];
     }
 
     foreach (['title', 'content_md', 'status', 'description', 'keywords', 'category', 'wrapper_comp', 'sort_order', 'css', 'ogp_image'] as $f) {
@@ -275,20 +280,19 @@ function toolUpdatePage($args) {
     $existing['updated_at'] = date('Y-m-d H:i:s');
 
     if (saveData(POSTS_DIR, $id, $existing)) {
-        return ['success' => true, 'id' => $id, 'message' => "ページ '{$id}' を更新しました。"];
+        return ['success' => true, 'id' => $id, 'message' => t('mcp_success_page_updated', $id)];
     }
-    return ['error' => 'ページの保存に失敗しました。'];
+    return ['error' => t('mcp_err_page_save_failed')];
 }
 
 function toolDeletePage($id) {
-    if (empty($id))      return ['error' => 'id は必須です。'];
-    if ($id === 'index') return ['error' => 'index ページは削除できません。'];
-    if (loadData(POSTS_DIR, $id) === null) return ['error' => "ページ '{$id}' が見つかりません。"];
+    if ($err = mcpRequireId($id)) return $err;
+    if (loadData(POSTS_DIR, $id) === null) return ['error' => t('mcp_err_page_not_found', $id)];
 
     if (deleteData(POSTS_DIR, $id)) {
-        return ['success' => true, 'message' => "ページ '{$id}' を削除しました。"];
+        return ['success' => true, 'message' => t('mcp_success_page_deleted', $id)];
     }
-    return ['error' => 'ページの削除に失敗しました。'];
+    return ['error' => t('mcp_err_page_delete_failed')];
 }
 
 function toolListComponents() {
@@ -310,19 +314,19 @@ function toolListComponents() {
 }
 
 function toolGetComponent($id) {
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
     $d = loadData(COMPONENTS_DIR, $id);
-    if ($d === null) return ['error' => "コンポーネント '{$id}' が見つかりません。"];
+    if ($d === null) return ['error' => t('mcp_err_component_not_found', $id)];
     $d['id'] = $id;
     return $d;
 }
 
 function toolCreateComponent($args) {
     $id = $args['id'] ?? '';
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
 
     if (loadData(COMPONENTS_DIR, $id) !== null) {
-        return ['error' => "コンポーネント '{$id}' はすでに存在します。更新する場合は update_component を使ってください。"];
+        return ['error' => t('mcp_err_component_already_exists', $id)];
     }
 
     $data = [
@@ -334,26 +338,26 @@ function toolCreateComponent($args) {
     ];
 
     if (saveData(COMPONENTS_DIR, $id, $data)) {
-        return ['success' => true, 'id' => $id, 'message' => "コンポーネント '{$id}' を作成しました。"];
+        return ['success' => true, 'id' => $id, 'message' => t('mcp_success_component_created', $id)];
     }
-    return ['error' => 'コンポーネントの保存に失敗しました。'];
+    return ['error' => t('mcp_err_component_save_failed')];
 }
 
 function toolUpdateComponent($args) {
     $id = $args['id'] ?? '';
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
 
     $existing = loadData(COMPONENTS_DIR, $id);
-    if ($existing === null) return ['error' => "コンポーネント '{$id}' が見つかりません。"];
+    if ($existing === null) return ['error' => t('mcp_err_component_not_found', $id)];
 
     foreach (['html', 'css', 'is_global', 'is_wrapper', 'is_ai_doc'] as $f) {
         if (array_key_exists($f, $args)) $existing[$f] = $args[$f];
     }
 
     if (saveData(COMPONENTS_DIR, $id, $existing)) {
-        return ['success' => true, 'id' => $id, 'message' => "コンポーネント '{$id}' を更新しました。"];
+        return ['success' => true, 'id' => $id, 'message' => t('mcp_success_component_updated', $id)];
     }
-    return ['error' => 'コンポーネントの保存に失敗しました。'];
+    return ['error' => t('mcp_err_component_save_failed')];
 }
 
 function toolListAiDocs() {
@@ -372,19 +376,19 @@ function toolListAiDocs() {
 }
 
 function toolGetAiDoc($id) {
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
     if (substr(strtolower($id), -3) !== '.md') {
         $id .= '.md';
     }
     $d = loadData(COMPONENTS_DIR, $id);
-    if ($d === null || empty($d['is_ai_doc'])) return ['error' => "AI指示書 '{$id}' が見つかりません。"];
+    if ($d === null || empty($d['is_ai_doc'])) return ['error' => t('mcp_err_ai_doc_not_found', $id)];
     $d['id'] = $id;
     return $d;
 }
 
 function toolUpdateAiDoc($args) {
     $id = $args['id'] ?? '';
-    if (empty($id)) return ['error' => 'id は必須です。'];
+    if ($err = mcpRequireId($id)) return $err;
     if (substr(strtolower($id), -3) !== '.md') {
         $id .= '.md';
     }
@@ -400,53 +404,64 @@ function toolUpdateAiDoc($args) {
             'is_ai_doc'  => true,
         ];
         if (saveData(COMPONENTS_DIR, $id, $data)) {
-            return ['success' => true, 'id' => $id, 'message' => "AI指示書 '{$id}' を作成しました。"];
+            return ['success' => true, 'id' => $id, 'message' => t('mcp_success_ai_doc_created', $id)];
         }
-        return ['error' => 'AI指示書の保存に失敗しました。'];
+        return ['error' => t('mcp_err_ai_doc_save_failed')];
     }
 
     // 更新
     if (empty($existing['is_ai_doc'])) {
-        return ['error' => "ID '{$id}' はAI指示書ではありません。通常のコンポーネント用ツールを使用してください。"];
+        return ['error' => t('mcp_err_not_ai_doc', $id)];
     }
 
     if (array_key_exists('html', $args)) $existing['html'] = $args['html'];
     if (array_key_exists('css', $args))  $existing['css']  = $args['css'];
 
     if (saveData(COMPONENTS_DIR, $id, $existing)) {
-        return ['success' => true, 'id' => $id, 'message' => "AI指示書 '{$id}' を更新しました。"];
+        return ['success' => true, 'id' => $id, 'message' => t('mcp_success_ai_doc_updated', $id)];
     }
-    return ['error' => 'AI指示書の保存に失敗しました。'];
+    return ['error' => t('mcp_err_ai_doc_save_failed')];
 }
 
 function toolGetSettings() {
-    $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
+    $settings = loadSettings();
     unset($settings['password_hash'], $settings['mcp_api_key']);
     return $settings;
 }
 
 function toolUploadMedia($args) {
-    if (empty($args['filename']))       return ['error' => 'filename は必須です。'];
-    if (empty($args['content_base64'])) return ['error' => 'content_base64 は必須です。'];
+    if (empty($args['filename']))       return ['error' => t('mcp_err_filename_required')];
+    if (empty($args['content_base64'])) return ['error' => t('mcp_err_content_base64_required')];
 
     $filename = basename($args['filename']);
     $content  = base64_decode($args['content_base64']);
     $category = $args['category'] ?? '';
 
-    if ($content === false) return ['error' => 'Base64のデコードに失敗しました。'];
+    if ($content === false) return ['error' => t('mcp_err_base64_decode_failed')];
+
+    // Security: Validate Extension (matches admin.php's upload whitelist)
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'mp3', 'm4a', 'mp4'];
+    if (!in_array($ext, $allowedExts)) {
+        return ['error' => t('mcp_err_invalid_extension', $ext)];
+    }
+
+    if ($ext === 'svg') {
+        $content = sanitizeSvgContent($content);
+    }
 
     if (!is_dir(MEDIA_DIR)) {
         if (!mkdir(MEDIA_DIR, 0777, true)) {
-            return ['error' => 'メディアフォルダの作成に失敗しました。'];
+            return ['error' => t('mcp_err_media_dir_create_failed')];
         }
     }
 
     $resolvedName = resolveMediaSaveName($filename, $category);
     $dest = MEDIA_DIR . '/' . $resolvedName;
     if (file_put_contents($dest, $content)) {
-        return ['success' => true, 'filename' => $resolvedName, 'message' => "ファイル '{$resolvedName}' をアップロードしました。"];
+        return ['success' => true, 'filename' => $resolvedName, 'message' => t('mcp_success_media_uploaded', $resolvedName)];
     }
-    return ['error' => 'ファイルの保存に失敗しました。許可属性（パーミッション）を確認してください。'];
+    return ['error' => t('mcp_err_file_save_failed')];
 }
 
 function toolBuildSSG($settings) {
@@ -475,7 +490,7 @@ function toolBuildSSG($settings) {
         'built'   => $built,
         'errors'  => $errors,
         'count'   => count($built),
-        'message' => count($built) . ' ページをビルドしました。',
+        'message' => t('mcp_success_ssg_built', count($built)),
     ];
 }
 
@@ -501,7 +516,7 @@ function executeTool($name, $args, $settings) {
     // デモモード中は書き込み系ツールをブロック
     $writeTools = ['create_page', 'update_page', 'delete_page', 'create_component', 'update_component', 'upload_media', 'build_ssg', 'update_ai_doc'];
     if (!empty($settings['demo_mode']) && in_array($name, $writeTools)) {
-        return ['error' => 'デモモードのため保存できません。'];
+        return ['error' => t('mcp_err_demo_mode')];
     }
 
     return match($name) {
@@ -520,7 +535,7 @@ function executeTool($name, $args, $settings) {
         'upload_media'     => toolUploadMedia($args),
         'get_settings'     => toolGetSettings(),
         'build_ssg'        => toolBuildSSG($settings),
-        default            => ['error' => "ツール '{$name}' は存在しません。"]
+        default            => ['error' => t('mcp_err_tool_not_found', $name)]
     };
 }
 
@@ -529,7 +544,7 @@ function handleRequest($method, $id, $params, $settings) {
         return mcpResponse($id, [
             'protocolVersion' => '2024-11-05',
             'capabilities'    => ['tools' => new stdClass()],
-            'serverInfo'      => ['name' => 'mikanBox MCP', 'version' => '1.0'],
+            'serverInfo'      => ['name' => 'mikanBox MCP', 'version' => MIKANBOX_VERSION],
         ]);
     }
 
@@ -552,7 +567,7 @@ function handleRequest($method, $id, $params, $settings) {
             return mcpResponse($id, toolContent($result));
 
         default:
-            return mcpErrorResponse($id, -32601, "メソッド '{$method}' は存在しません。");
+            return mcpErrorResponse($id, -32601, t('mcp_err_method_not_found', $method));
     }
 }
 
@@ -563,7 +578,7 @@ function handleRequest($method, $id, $params, $settings) {
 if (realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
     if (php_sapi_name() === 'cli') {
         // --- stdio transport ---
-        $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
+        $settings = loadSettings();
 
         while (!feof(STDIN)) {
             $line = fgets(STDIN);
@@ -603,7 +618,7 @@ if (realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
-            echo json_encode(mcpErrorResponse(null, -32700, 'POST リクエストのみ受け付けます。'), JSON_UNESCAPED_UNICODE);
+            echo json_encode(mcpErrorResponse(null, -32700, t('mcp_err_post_only')), JSON_UNESCAPED_UNICODE);
             exit;
         }
 
@@ -611,7 +626,7 @@ if (realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
         $request = json_decode($body, true);
 
         if (json_last_error() !== JSON_ERROR_NONE || !isset($request['method'])) {
-            echo json_encode(mcpErrorResponse(null, -32700, 'リクエストのパースに失敗しました。'), JSON_UNESCAPED_UNICODE);
+            echo json_encode(mcpErrorResponse(null, -32700, t('mcp_err_parse_failed')), JSON_UNESCAPED_UNICODE);
             exit;
         }
 
@@ -631,29 +646,29 @@ if (realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
         }
 
         // それ以外は API キー認証
-        $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
+        $settings = loadSettings();
         $apiKey   = $settings['mcp_api_key'] ?? '';
 
         if (empty($apiKey)) {
             http_response_code(403);
-            echo json_encode(mcpErrorResponse($id, -32001, 'MCP が有効化されていません。settings.json に mcp_api_key を追加してください。'), JSON_UNESCAPED_UNICODE);
+            echo json_encode(mcpErrorResponse($id, -32001, t('mcp_err_mcp_disabled')), JSON_UNESCAPED_UNICODE);
             exit;
         }
 
-        $authHeader   = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        // クエリパラメータでのAPIキー受付は行わない（アクセスログ・リファラに残るため）。
+        // ヘッダー（Authorization: Bearer または X-API-Key）のみを受け付ける。
+        $authHeader   = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         $apiKeyHeader = $_SERVER['HTTP_X_API_KEY'] ?? '';
         $provided = '';
         if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
             $provided = trim($m[1]);
         } elseif (!empty($apiKeyHeader)) {
             $provided = trim($apiKeyHeader);
-        } elseif (!empty($_GET['api_key'])) {
-            $provided = trim($_GET['api_key']);
         }
 
         if (!hash_equals($apiKey, $provided)) {
             http_response_code(401);
-            echo json_encode(mcpErrorResponse($id, -32001, 'Unauthorized: API キーが正しくありません。'), JSON_UNESCAPED_UNICODE);
+            echo json_encode(mcpErrorResponse($id, -32001, t('mcp_err_unauthorized')), JSON_UNESCAPED_UNICODE);
             exit;
         }
 

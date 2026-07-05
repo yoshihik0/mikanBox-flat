@@ -93,14 +93,37 @@ class MikanBoxRenderer {
             http_response_code(404);
             $pageData = loadData(POSTS_DIR, '404') ?: [
                 'title' => '404 Not Found',
-                'content_md' => "# 404 Not Found\nページが見つかりませんでした。",
+                'content_md' => "# 404 Not Found\n" . t('err_404_body'),
                 'wrapper_comp' => '_layout'
             ];
         }
 
         // Check for private status (only if not in static mode or authenticated)
-        if (!$this->staticMode && (isset($pageData['status']) && in_array($pageData['status'], ['draft', 'db']) && !isset($_SESSION['admin_logged_in']))) {
-            return "<!-- Private content -->";
+        // NOTE: branches on function_exists('getPreviewToken') so this file can be
+        // byte-identical between the SQLite backend (approval/preview workflow) and
+        // the JSON flat-file backend (no approval workflow, no getPreviewToken()).
+        $isPrivate = false;
+        $status = $pageData['status'] ?? '';
+        if (function_exists('getPreviewToken')) {
+            // SQLite backend: supports 'pending' approval status with a preview token.
+            if ($status === 'draft' || $status === 'db') {
+                $isPrivate = true;
+            } elseif ($status === 'pending') {
+                $expectedToken = getPreviewToken($pageId);
+                $providedToken = $_GET['preview'] ?? '';
+                if (empty($providedToken) || !hash_equals($expectedToken, $providedToken)) {
+                    $isPrivate = true;
+                }
+            }
+            if (!$this->staticMode && $isPrivate && !isset($_SESSION['admin_logged_in'])) {
+                http_response_code(403);
+                return "<h1>403 Forbidden</h1><p>" . t('err_403_pending_body') . "</p>";
+            }
+        } else {
+            // Flat backend: simple draft/db check, no approval workflow.
+            if (!$this->staticMode && in_array($status, ['draft', 'db'], true) && !isset($_SESSION['admin_logged_in'])) {
+                return "<!-- Private content -->";
+            }
         }
 
         // Get site metadata for convenience
@@ -122,12 +145,17 @@ class MikanBoxRenderer {
             $contentHtml = $contentMd;
         } else {
             // Protect tags
+            // A zero-width space (U+200B) is added on both sides of the placeholder so a line
+            // ending OR starting with a tag doesn't look like "adjacent to an HTML tag" to the
+            // Markdown parser's <br> line-break logic (which suppresses <br> right next to a bare
+            // '<' or '>'). htmlspecialchars() (used for lines inside ``` code blocks) leaves the
+            // ZWSPs untouched, so the escaped-placeholder restore step below still matches them.
             $protectedMd = preg_replace_callback('/\{\{[^\}]+\}\}/', function($m) {
-                return '<!--MKNTG' . base64_encode($m[0]) . '-->';
+                return "\xE2\x80\x8B<!--MKNTG" . base64_encode($m[0]) . "-->\xE2\x80\x8B";
             }, $contentMd);
-            
+
             $contentHtml = $this->markdown->text($protectedMd);
-            $contentHtml = preg_replace_callback('/<!--MKNTG([a-zA-Z0-9+\/=]+)-->/', function($m) {
+            $contentHtml = preg_replace_callback('/\x{200B}?<!--MKNTG([a-zA-Z0-9+\/=]+)-->\x{200B}?/u', function($m) {
                 return base64_decode($m[1]);
             }, $contentHtml);
             // HTML-encoded placeholders (inside <code>) are left as-is here,
@@ -140,7 +168,13 @@ class MikanBoxRenderer {
         $html = $wrapperData['html'] ?? '{{CONTENT}}';
 
         // Embed main content into the wrapper
-        $html = str_replace('{{CONTENT}}', $contentHtml, $html);
+        // Page-specific CSS is scoped to a wrapper div around the content (like component/wrapper
+        // CSS already is), so it can't leak into the header/footer/nav outside {{CONTENT}}.
+        // Only added when page CSS is actually present, so a full pasted HTML document
+        // (e.g. via the _ai component) isn't nested inside an extra <div> unnecessarily.
+        $hasPageCss = !empty($pageData['css']);
+        $contentToEmbed = $hasPageCss ? '<div class="mikan-content-scope">' . $contentHtml . '</div>' : $contentHtml;
+        $html = str_replace('{{CONTENT}}', $contentToEmbed, $html);
 
         // Wrapper CSS
         if ($wrapperData && !empty($wrapperData['css'])) {
@@ -154,12 +188,23 @@ class MikanBoxRenderer {
         }
 
         // 3. Page-specific CSS
-        if (!empty($pageData['css'])) {
-            $this->globalCssBuffer[] = "/* Page CSS */\n" . $pageData['css'];
+        if ($hasPageCss) {
+            $scopedPageCss = scopeCss($pageData['css'], '.mikan-content-scope');
+            $this->globalCssBuffer[] = "/* Page CSS */\n" . $scopedPageCss;
         }
 
         // 4. Parse components (recursively)
         $html = $this->parseComponents($html);
+
+        // Protect HTML comments (from the wrapper and every included component) before
+        // steps 5-7, so a {{TITLE}}/{{POST_MD:...}}/etc. tag mentioned inside one as
+        // documentation text isn't expanded or path-rewritten — comments must stay inert.
+        $renderCommentMap = [];
+        $html = preg_replace_callback('/<!--.*?-->/s', function($m) use (&$renderCommentMap) {
+            $ph = "\x02RENDERCOMMENT" . count($renderCommentMap) . "\x03";
+            $renderCommentMap[$ph] = $m[0];
+            return $ph;
+        }, $html);
 
         // 5. Expand basic tags
         $html = $this->replaceBasicTags($html, $pageData, $pageTitle, $pageDesc, $pageKeywords, $ogpImage);
@@ -170,8 +215,12 @@ class MikanBoxRenderer {
         // 7. Final path completion
         $html = $this->applyPathCompletion($html);
 
+        foreach ($renderCommentMap as $ph => $original) {
+            $html = str_replace($ph, $original, $html);
+        }
+
         // 7.5. Restore HTML-encoded placeholders left inside <code> blocks as literal text
-        $html = preg_replace_callback('/&lt;!--MKNTG([a-zA-Z0-9+\/=]+)--&gt;/', function($m) {
+        $html = preg_replace_callback('/\x{200B}?&lt;!--MKNTG([a-zA-Z0-9+\/=]+)--&gt;\x{200B}?/u', function($m) {
             return htmlspecialchars(base64_decode($m[1]));
         }, $html);
 
@@ -211,7 +260,21 @@ class MikanBoxRenderer {
 
     private function parseComponents($content, array $visited = []) {
         if (empty($content)) return '';
-        return preg_replace_callback('/\{\{COMPONENT:([a-zA-Z0-9_\-]+)\}\}/', function($matches) use ($visited) {
+
+        // Protect HTML comments so a {{COMPONENT:...}} tag mentioned inside one (e.g. as
+        // documentation/example text, which a component's own comment may reasonably want
+        // to show) is never treated as a live tag to expand. Comments must stay inert
+        // regardless of what they happen to mention — otherwise a component whose comment
+        // names itself triggers the infinite-loop guard mid-comment, breaking the comment
+        // early and leaking the rest of its text onto the page.
+        $commentMap = [];
+        $protectedContent = preg_replace_callback('/<!--.*?-->/s', function($m) use (&$commentMap) {
+            $ph = "\x02COMMENT" . count($commentMap) . "\x03";
+            $commentMap[$ph] = $m[0];
+            return $ph;
+        }, $content);
+
+        $result = preg_replace_callback('/\{\{COMPONENT:([a-zA-Z0-9_\-]+)\}\}/', function($matches) use ($visited) {
             $compId = $matches[1];
 
             // Security: Prevent Infinite Loops (DoS)
@@ -221,13 +284,13 @@ class MikanBoxRenderer {
             $visited[] = $compId;
 
             $compData = loadData(COMPONENTS_DIR, $compId);
-            
+
             if (!$compData) return "<!-- Component '{$compId}' not found -->";
-            
+
             $compHtml = $compData['html'] ?? '';
             $compCss  = $compData['css'] ?? '';
             $isGlobal = !empty($compData['is_global']);
-            
+
             if (!empty($compCss)) {
                 if ($isGlobal) {
                     $this->globalCssBuffer[] = "/* Component (Global): {$compId} */\n" . $compCss;
@@ -238,8 +301,15 @@ class MikanBoxRenderer {
                     $compHtml = '<div class="' . $prefixClass . '">' . $compHtml . '</div>';
                 }
             }
+            // This recursive call independently protects/restores comments found within
+            // $compHtml, so a nested component's own documentation comments are equally safe.
             return $this->parseComponents($compHtml, $visited);
-        }, $content);
+        }, $protectedContent);
+
+        foreach ($commentMap as $ph => $original) {
+            $result = str_replace($ph, $original, $result);
+        }
+        return $result;
     }
 
     private function replaceBasicTags($text, $pageData, $pageTitle, $pageDesc, $pageKeywords, $ogpImage) {
@@ -412,6 +482,16 @@ class MikanBoxRenderer {
             return $matches[0];
         }, $html);
 
+        // 4. Search Results Tag: {{SEARCH_RESULTS:componentID}} or {{SEARCH_RESULTS}}
+        // NOTE: only active when searchPosts()/getSearchSnippet() exist (SQLite backend).
+        // On the flat backend the tag is left unexpanded, matching its current behavior.
+        if (function_exists('searchPosts')) {
+            $html = preg_replace_callback('/\{\{\s*SEARCH_RESULTS\s*(?::\s*([a-zA-Z0-9_\-]+)\s*)?\}\}/u', function($matches) {
+                $compId = isset($matches[1]) ? trim($matches[1]) : '';
+                return $this->generateSearchResultsHtml($compId);
+            }, $html);
+        }
+
         // Media Tags (Direct expansion, though applyPathCompletion also handles standard tags)
         $mediaBase = rtrim($this->getSiteUrl(), '/') . '/media/';
         $html = preg_replace('/\{\{VIDEO:([a-zA-Z0-9_\-\.]+)\}\}/', '<video src="' . $mediaBase . '$1" controls style="max-width:100%; height:auto;"></video>', $html);
@@ -424,6 +504,7 @@ class MikanBoxRenderer {
             $rowId = $matches[2];
             $key   = $matches[3];
             $lookupKey = $rowId ? "#{$rowId}:{$key}" : $key;
+            if (!$this->isUrlSafeForExternalFetch($url)) return "<!-- Error: URL not allowed (private/internal address) $url -->";
             $context = stream_context_create(['http' => ['timeout' => 5]]);
             $externalContent = @file_get_contents($url, false, $context);
             if ($externalContent === false) return "<!-- Error: Fetch failed $url -->";
@@ -436,6 +517,7 @@ class MikanBoxRenderer {
         // EXT_MD:url — render full external content
         $html = preg_replace_callback('/\{\{EXT_MD:(https?:\/\/[^\}]+)\}\}/', function($matches) {
             $url = $matches[1];
+            if (!$this->isUrlSafeForExternalFetch($url)) return "<!-- Error: URL not allowed (private/internal address) $url -->";
             $context = stream_context_create(['http' => ['timeout' => 5]]);
             $externalContent = @file_get_contents($url, false, $context);
             if ($externalContent === false) return "<!-- Error: Fetch failed $url -->";
@@ -488,10 +570,10 @@ class MikanBoxRenderer {
             $content = $this->extractDataBlocks($content, $this->currentPageData);
             $content = $this->restoreCodeSpans($content, $codeMap);
             $protected = preg_replace_callback('/\{\{[^\}]+\}\}/', function($m) {
-                return '<!--MKNTG' . base64_encode($m[0]) . '-->';
+                return "\xE2\x80\x8B<!--MKNTG" . base64_encode($m[0]) . "-->\xE2\x80\x8B";
             }, $content);
             $embeddedHtml = $this->markdown->text($protected);
-            $embeddedHtml = preg_replace_callback('/<!--MKNTG([a-zA-Z0-9+\/=]+)-->/', function($m) {
+            $embeddedHtml = preg_replace_callback('/\x{200B}?<!--MKNTG([a-zA-Z0-9+\/=]+)-->\x{200B}?/u', function($m) {
                 return base64_decode($m[1]);
             }, $embeddedHtml);
             $postTitle    = isset($postData['title']) ? $postData['title'] . ' - ' . $this->siteSettings['site_name'] : $this->siteSettings['site_name'];
@@ -516,6 +598,27 @@ class MikanBoxRenderer {
         $content = preg_replace('/\s+on\w+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]*)/i', '', $content);
         $content = preg_replace('/href\s*=\s*["\']javascript:[^"\']*["\']/i', 'href="#"', $content);
         return $content;
+    }
+
+    /**
+     * SSRF guard for {{EXT_MD:url}}: resolve the URL's host to its IP(s) and
+     * reject private/reserved ranges (loopback, link-local incl. cloud
+     * metadata endpoints, RFC1918 private networks, etc.) before fetching.
+     */
+    private function isUrlSafeForExternalFetch($url) {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) return false;
+        if (strtolower($host) === 'localhost') return false;
+
+        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+        if (empty($ips)) return false;
+
+        foreach ($ips as $ip) {
+            if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -653,6 +756,72 @@ class MikanBoxRenderer {
         }
         $html .= '</ul>';
         return $html;
+    }
+
+    // NOTE: only reachable when searchPosts()/getSearchSnippet() exist (SQLite backend).
+    // Kept here for byte-identical sync with the flat backend's copy of this file —
+    // do not call directly on the flat backend, where those functions are undefined.
+    private function generateSearchResultsHtml($compId) {
+        $keyword = $_GET['q'] ?? '';
+        $keyword = trim($keyword);
+        if ($keyword === '') {
+            return '<p class="search-no-query">' . t('search_no_query') . '</p>';
+        }
+        
+        // Search posts (visitor search)
+        $results = searchPosts($keyword, false);
+        
+        if (empty($results)) {
+            return '<p class="search-no-results">' . t('search_no_results', htmlspecialchars($keyword)) . '</p>';
+        }
+        
+        $effectiveCompId = $compId ?: 'search_result_item';
+        $compData = loadData(COMPONENTS_DIR, $effectiveCompId);
+        $customTemplate = null;
+        $prefixClass = '';
+        
+        if ($compData) {
+            $customTemplate = $compData['html'] ?? '';
+            $compCss = $compData['css'] ?? '';
+            if (!empty($compCss)) {
+                if (!empty($compData['is_global'])) {
+                    $this->globalCssBuffer[] = "/* Search Result Item (Global): {$effectiveCompId} */\n" . $compCss;
+                } else {
+                    $prefixClass = 'cmp-' . $effectiveCompId;
+                    $this->globalCssBuffer[] = "/* Search Result Item: {$effectiveCompId} */\n" . scopeCss($compCss, '.' . $prefixClass);
+                }
+            }
+        }
+        
+        if (!$customTemplate) {
+            $customTemplate = '<div class="search-result-item"><h3><a href="{{RESULT_URL}}">{{RESULT_TITLE}}</a></h3><p class="search-snippet">{{RESULT_SNIPPET}}</p><span class="search-date">{{RESULT_DATE}}</span></div>';
+        }
+        
+        $outputHtml = '<div class="search-results-list' . ($prefixClass !== '' ? ' ' . $prefixClass : '') . '">';
+        foreach ($results as $item) {
+            $title = highlightSearchKeyword(htmlspecialchars($item['title'] !== '' ? $item['title'] : $item['id'], ENT_QUOTES, 'UTF-8'), $keyword);
+            $snippet = getSearchSnippet($item['content_md'], $keyword);
+            
+            // Build absolute URL for scroll-to-text-fragment
+            $link = $this->buildFullUrl($this->getSiteUrl(), $this->getPageLink($item['id'], ''));
+            
+            // Text Fragment highlight
+            $fragment = '#:~:text=' . urlencode($keyword);
+            $linkWithFragment = $link . $fragment;
+            
+            $updateDate = substr($item['updated_at'] !== '' ? $item['updated_at'] : date('Y-m-d H:i:s'), 0, 10);
+            
+            $itemHtml = str_replace(
+                ['{{RESULT_TITLE}}', '{{RESULT_SNIPPET}}', '{{RESULT_URL}}', '{{RESULT_DATE}}'],
+                [$title, $snippet, $linkWithFragment, $updateDate],
+                $customTemplate
+            );
+            
+            $outputHtml .= $itemHtml;
+        }
+        $outputHtml .= '</div>';
+        
+        return $outputHtml;
     }
 
     private function generateNavCards($targetCategory, $templateCompId) {

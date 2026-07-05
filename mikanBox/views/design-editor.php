@@ -20,26 +20,34 @@
                     $currentType = 'ai_doc';
                 }
                 ?>
-                <div class="form-group">
-                    <label><?= t('label_component_id') ?></label>
-                    <input type="text" name="id" value="<?= htmlspecialchars($editId??'') ?>" required placeholder="header">
-                    <small class="sub-text sub-text-block"><?= t('component_id_hint') ?></small>
-                </div>
-                <div class="form-group">
-                    <label><?= t('label_type') ?: 'タイプ' ?></label>
-                    <div class="checkbox-flex" style="display: flex; gap: 20px; align-items: center; margin-top: 5px; flex-wrap: wrap;">
-                        <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" name="comp_type" value="part" <?= ($currentType === 'part') ? 'checked' : '' ?>>
-                            <?= t('comp_type_part') ?: 'パーツ' ?>
-                        </label>
-                        <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" name="comp_type" value="wrapper" <?= ($currentType === 'wrapper') ? 'checked' : '' ?>>
-                            <?= t('comp_type_page') ?: 'ページ' ?>
-                        </label>
-                        <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                            <input type="radio" name="comp_type" value="ai_doc" <?= ($currentType === 'ai_doc') ? 'checked' : '' ?>>
-                            <?= t('comp_type_aidoc') ?: 'AI指示' ?>
-                        </label>
+                <div class="page-edit-grid">
+                    <div class="grid-span-2">
+                    <div class="form-group">
+                        <label><?= t('label_component_id') ?></label>
+                        <input type="text" name="id" value="<?= htmlspecialchars($editId??'') ?>" required placeholder="header">
+                        <small class="sub-text sub-text-block"><?= t('component_id_hint') ?></small>
+                    </div>
+                    <div class="form-group">
+                        <label><?= t('label_type') ?: 'タイプ' ?></label>
+                        <div class="checkbox-flex" style="display: flex; gap: 20px; align-items: center; margin-top: 5px; flex-wrap: wrap;">
+                            <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="comp_type" value="part" <?= ($currentType === 'part') ? 'checked' : '' ?>>
+                                <?= t('comp_type_part') ?: 'パーツ' ?>
+                            </label>
+                            <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="comp_type" value="wrapper" <?= ($currentType === 'wrapper') ? 'checked' : '' ?>>
+                                <?= t('comp_type_page') ?: 'ページ' ?>
+                            </label>
+                            <label class="checkbox-label" style="font-weight: normal; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                <input type="radio" name="comp_type" value="ai_doc" <?= ($currentType === 'ai_doc') ? 'checked' : '' ?>>
+                                <?= t('comp_type_aidoc') ?: 'AI指示' ?>
+                            </label>
+                        </div>
+                    </div>
+                    </div>
+                    <div class="form-group form-group-memo grid-span-2">
+                        <label><?= t('label_memo') ?></label>
+                        <textarea name="memo" class="textarea-xs textarea-memo" placeholder="<?= t('memo_hint') ?>"><?= htmlspecialchars($editData['memo']??'') ?></textarea>
                     </div>
                 </div>
                 <div class="form-group">

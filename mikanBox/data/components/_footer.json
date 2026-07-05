@@ -1,6 +1,0 @@
-{
-    "html": "<footer>\n  <p>\n    &copy; 2026, 🍊mikanBox by yoshihiko.com\n  <\/p>\n<\/footer>",
-    "css": "footer {\n  padding: 1rem;\n  margin-top: 40px;\n  text-align: center;\n  background-color:#fc0;\n}",
-    "is_global": false,
-    "is_wrapper": false
-}

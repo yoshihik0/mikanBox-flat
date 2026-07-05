@@ -914,6 +914,7 @@ textarea {
 .status-selector-group {
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
 }
 
 .radio-label {
@@ -1214,6 +1215,9 @@ textarea {
 /* --- Textarea Variants --- */
 .textarea-mono       { font-family: var(--font-mono); }
 .textarea-description { height: 60px; min-height: 60px; padding: 10px; font-family: sans-serif; }
+.textarea-memo        { min-height: 110px; padding: 10px; font-family: sans-serif; background: #fffbeb; border-color: #fde68a; }
+.form-group-memo      { display: flex; flex-direction: column; }
+.form-group-memo .textarea-memo { flex: 1; }
 .textarea-prompt      { font-family: var(--font-mono); height: 180px; background: #f9f9fb; margin-bottom: 15px; }
 .textarea-min-80      { min-height: 80px; }
 
