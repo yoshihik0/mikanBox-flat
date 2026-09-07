@@ -935,7 +935,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     elseif ($_POST['save_action'] === 'generate_mcp_key') {
         $newKey = bin2hex(random_bytes(24));
         $settings['mcp_api_key'] = $newKey;
-        $saved = (bool)file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        // 保存はストレージ層へ通す（SQLite版ではデータベースが読み取り元になるため、
+        // settings.json への直接書き込みでは発行したキーが反映されない）。
+        $saved = saveSettings($settings);
         if (isset($_POST['ajax_request'])) {
             header('Content-Type: application/json');
             echo json_encode([
