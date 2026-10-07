@@ -360,7 +360,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             'css' => $_POST['css'] ?? '',
             'js' => $_POST['js'] ?? '',
             'is_html' => isset($_POST['is_html']) ? true : false,
-            'wrapper_comp' => $_POST['wrapper_comp'] ?: '_layout',
+            'wrapper_comp' => ($_POST['wrapper_comp'] ?? '') ?: '_layout',
+            'exclude_tracking' => isset($_POST['tracking_option_present']) ? isset($_POST['exclude_tracking']) : !empty($existingPageData['exclude_tracking'] ?? false),
             'sort_order' => (int)($_POST['sort_order'] ?? 0),
             'updated_at' => $updatedAt
         ];
@@ -622,6 +623,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                     ? $postedSiteId
                     : 'site-' . bin2hex(random_bytes(8));
             }
+            if (isset($_POST['tracking_component'])) {
+                $trackingId = trim((string)$_POST['tracking_component']);
+                $trackingData = $trackingId !== '' ? loadData(COMPONENTS_DIR, $trackingId) : null;
+                $settings['tracking_component'] = $trackingData && empty($trackingData['is_ai_doc']) && empty($trackingData['is_wrapper']) ? $trackingId : '';
+            }
             if (isset($_POST['site_name'])) $settings['site_name'] = $_POST['site_name'];
             if (isset($_POST['site_url'])) {
                 $siteUrl = rtrim(trim((string)$_POST['site_url']), '/');
@@ -757,6 +763,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         if (isset($_POST['ajax_request'])) {
             header('Content-Type: application/json');
             echo json_encode(['success' => $success, 'message' => $message]);
+            exit;
+        }
+    }
+    elseif ($_POST['save_action'] === 'convert_media_webp') {
+        try {
+            $result = mediaConvertExistingToWebp((string)($_POST['filename'] ?? ''));
+            $success = true;
+            $message = sprintf(t('msg_media_webp_converted'), $result['filename']) . sprintf(t('msg_media_links_updated'), $result['updated']);
+        } catch (Throwable $error) {
+            $success = false;
+            $message = $error->getMessage();
+        }
+        if (isset($_POST['ajax_request'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['success'=>$success,'message'=>$message]);
             exit;
         }
     }
@@ -1445,7 +1466,7 @@ function getIcon($name) {
 
     // save_action値がメディア操作（AJAXで別途ハンドリングされる）かどうかを判定
     function isMediaFormAction(action) {
-        return action === 'resize_media' || action === 'delete_media' || action === 'rename_media';
+        return action === 'resize_media' || action === 'delete_media' || action === 'rename_media' || action === 'convert_media_webp';
     }
 
     // Resize, rename and delete media forms - event delegation
