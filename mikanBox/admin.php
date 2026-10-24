@@ -29,7 +29,8 @@ $loginError = ''; // Initialize loginError
 
 // Logout process
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
-    unset($_SESSION['admin_logged_in']);
+    mikanBoxClearAuthentication();
+    mikanBoxRenewAuthentication();
     // In demo mode, redirect to login form after logout
     $redirect = $isDemoMode ? basename($_SERVER['PHP_SELF']) . '?login=1' : basename($_SERVER['PHP_SELF']);
     header('Location: ' . $redirect);
@@ -66,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                     $htaccessContent = "DirectoryIndex index.php\n\n<IfModule mod_rewrite.c>\n    RewriteEngine On\n    RewriteCond %{REQUEST_FILENAME} -f [OR]\n    RewriteCond %{REQUEST_FILENAME} -d\n    RewriteRule ^ - [L]\n    RewriteRule ^ index.php [L,QSA]\n</IfModule>\n";
                     @file_put_contents($htaccessPath, $htaccessContent);
                 }
+                mikanBoxRenewAuthentication();
                 $_SESSION['admin_logged_in'] = true;
                 header('Location: ' . basename(__FILE__));
                 exit;
@@ -81,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             $loginError = t('err_rate_limited', (int)ceil($lockedRemain / 60));
         } elseif (password_verify($_POST['password'] ?? '', $passwordHash)) {
             clearLoginAttempts($rateLimitId);
+            mikanBoxRenewAuthentication();
             $_SESSION['admin_logged_in'] = true;
             header('Location: ' . basename(__FILE__));
             exit;
@@ -93,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
 
 // Show login screen if not logged in
 // In demo mode, allow access without login (unless ?login=1 is requested for full access)
-if (!$isLoggedIn && (!$isDemoMode || isset($_GET['login']))) {
+if (empty($passwordHash) || (!$isLoggedIn && (!$isDemoMode || isset($_GET['login'])))) {
     if (ob_get_length()) ob_clean();
 ?>
 <!DOCTYPE html>
@@ -107,21 +110,23 @@ if (!$isLoggedIn && (!$isDemoMode || isset($_GET['login']))) {
 <body class="login-body">
     <div class="login-box">
         <div class="login-title"><span>🍊</span><span>mikanBox flat</span></div>
+        <?php if(!empty($loginError)) echo "<div class='error'>{$loginError}</div>"; ?>
         <?php if (empty($passwordHash)): ?>
             <p><strong><?= t('hint_initial_setup') ?></strong><br><?= t('hint_setup_msg') ?></p>
             <form method="post">
+                <?php require __DIR__ . '/views/site-sections/password-account.php'; ?>
                 <input type="hidden" name="login_action" value="set_initial_password">
-                <input type="password" name="new_password" placeholder="<?= t('admin_new_password') ?>" required autofocus>
+                <input type="password" name="new_password" autocomplete="new-password" placeholder="<?= t('admin_new_password') ?>" required autofocus>
                 <button type="submit"><?= t('btn_set_password') ?></button>
             </form>
         <?php else: ?>
             <?php if ($isDemoMode): ?>
             <p><?= t('hint_demo_login') ?></p>
             <?php endif; ?>
-            <?php if(!empty($loginError)) echo "<div class='error'>{$loginError}</div>"; ?>
             <form method="post">
+                <?php require __DIR__ . '/views/site-sections/password-account.php'; ?>
                 <input type="hidden" name="login_action" value="login">
-                <input type="password" name="password" placeholder="<?= t('admin_password') ?>" required autofocus>
+                <input type="password" name="password" autocomplete="current-password" placeholder="<?= t('admin_password') ?>" required autofocus>
                 <button type="submit"><?= t('btn_login') ?></button>
             </form>
             <?php if ($isDemoMode): ?>
@@ -620,6 +625,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     elseif ($_POST['save_action'] === 'save_settings' || $_POST['save_action'] === 'save_memo') {
         // Shared logic for saving settings (Fix #8)
         if ($_POST['save_action'] === 'save_settings') {
+            if (!empty($_POST['new_password'])) {
+                if (!password_verify($_POST['current_password'] ?? '', $passwordHash)) {
+                    $message = t('err_current_password');
+                    $passwordSaveFailed = true;
+                    goto skip_post_actions;
+                }
+                if (strlen($_POST['new_password']) < 4) {
+                    $message = t('err_password_chars');
+                    $passwordSaveFailed = true;
+                    goto skip_post_actions;
+                }
+            }
             if (empty($settings['site_id'])) {
                 $postedSiteId = trim((string)($_POST['site_id'] ?? ''));
                 $settings['site_id'] = preg_match('/^site-[a-f0-9]{16}$/', $postedSiteId)
@@ -654,7 +671,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             if (isset($_POST['media_per_page'])) $settings['media_per_page'] = (int)$_POST['media_per_page'];
             if (isset($_POST['category_candidates'])) $settings['category_candidates'] = $_POST['category_candidates'];
 
-            // Password change (Skip current password check for simplicity if from admin panel, but new_password must be set)
+            // Current password and minimum length were checked before changing settings.
             if (!empty($_POST['new_password'])) {
                 $settings['password_hash'] = password_hash($_POST['new_password'], PASSWORD_DEFAULT);
             }
@@ -1051,7 +1068,7 @@ skip_post_actions:
 // Return JSON response for AJAX saves and skip rendering page
 if (isset($_POST['ajax_request'])) {
     $responseData = [
-        'success' => true,
+        'success' => empty($passwordSaveFailed),
         'message' => $message ?? t('msg_update_success'),
         'editId' => $editId ?? null
     ];

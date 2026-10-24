@@ -133,15 +133,16 @@
                 </summary>
                 <div class="editor-container editor-container-sub">
                     <form method="post">
+                        <?php require __DIR__ . '/site-sections/password-account.php'; ?>
                         <input type="hidden" name="save_action" value="save_settings">
                         <?= csrfField() ?>
                         <div class="form-group">
                             <label><?= t('label_current_password') ?></label>
-                            <input type="password" name="current_password" style="max-width:300px;">
+                            <input type="password" required name="current_password" autocomplete="current-password" style="max-width:300px;">
                         </div>
                         <div class="form-group">
                             <label><?= t('admin_new_password') ?></label>
-                            <input type="password" name="new_password" style="max-width:300px;">
+                            <input type="password" required minlength="4" name="new_password" autocomplete="new-password" style="max-width:300px;">
                         </div>
                         <button type="submit" class="btn btn-blue btn-small"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
                     </form>
