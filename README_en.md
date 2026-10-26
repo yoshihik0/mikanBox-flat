@@ -54,7 +54,7 @@ For campaign or event sites, shop sites — sites with few pages but that need r
 | Requirements | PHP 8.0+ only | PHP 8.0+ + SQLite3 extension (standard on most hosting providers) |
 | Approval workflow & preview share URL | − | ○ |
 | Revision history & restore to a previous version | − | ○ |
-| Self-service password reset | − (requires manually editing the settings file) | ○ (security question) |
+| Sign-in | Password | Registered devices (no password) |
 | Keyword search box in the admin panel | − | ○ |
 
 > [!TIP]
