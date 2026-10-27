@@ -1345,8 +1345,28 @@ function getIcon($name) {
     <script>
     // ブラウザのスクロール復元を無効にして競合させない
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    let restoredReloadPosition = false;
+    function reloadPreservingPosition() {
+        try {
+            const open = [...document.querySelectorAll('details')].map(detail => detail.open);
+            sessionStorage.setItem('mikanbox-reload-position', JSON.stringify({y: window.scrollY, open}));
+        } catch (e) {}
+        window.location.reload();
+    }
+    (function restoreReloadPosition() {
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('mikanbox-reload-position') || 'null');
+            if (!saved) return;
+            restoredReloadPosition = true;
+            sessionStorage.removeItem('mikanbox-reload-position');
+            document.querySelectorAll('details').forEach((detail, i) => { if (saved.open[i] !== undefined) detail.open = saved.open[i]; });
+            requestAnimationFrame(() => window.scrollTo({top: saved.y, behavior: 'instant'}));
+        } catch (e) {}
+    })();
+
     // エディター読み込み時: 遅延なしで即スムーズスクロール開始（window.onload より大幅に早い）
     (function() {
+        if (restoredReloadPosition) return;
         var hash = window.location.hash;
         if (hash === '#page-editor' || hash === '#design-editor' || hash === '#pages' || hash === '#media') {
             var el = document.querySelector(hash);
@@ -1452,6 +1472,29 @@ function getIcon($name) {
         }
     }
 
+    // Keep the viewport stable while a refreshed list replaces its old DOM.
+    let listRefreshCount = 0, savedOverflowAnchor = '';
+    function replaceListPreservingScroll(oldList, newList) {
+        if (!oldList || !newList) return;
+        const y = window.scrollY;
+        const root = document.documentElement;
+        if (listRefreshCount++ === 0) {
+            savedOverflowAnchor = root.style.overflowAnchor;
+            root.style.overflowAnchor = 'none';
+        }
+        // Reserve the old height until the replacement has been laid out.
+        newList.style.minHeight = oldList.getBoundingClientRect().height + 'px';
+        oldList.replaceWith(newList);
+        window.scrollTo({top: y, behavior: 'instant'});
+        requestAnimationFrame(() => {
+            newList.style.minHeight = '';
+            window.scrollTo({top: y, behavior: 'instant'});
+            requestAnimationFrame(() => {
+                if (--listRefreshCount === 0) root.style.overflowAnchor = savedOverflowAnchor;
+            });
+        });
+    }
+
     async function refreshMediaGrid() {
         try {
             const urlParams = new URLSearchParams(window.location.search);
@@ -1462,7 +1505,7 @@ function getIcon($name) {
             temp.innerHTML = html;
             const newWrap = temp.querySelector('#media-list-wrap');
             const oldWrap = document.querySelector('#media-list-wrap');
-            if (newWrap && oldWrap) oldWrap.outerHTML = newWrap.outerHTML;
+            replaceListPreservingScroll(oldWrap, newWrap);
         } catch(err) {}
     }
 
@@ -1477,7 +1520,7 @@ function getIcon($name) {
             temp.innerHTML = html;
             const newWrap = temp.querySelector('#pages-table-wrap');
             const oldWrap = document.querySelector('#pages-table-wrap');
-            if (newWrap && oldWrap) oldWrap.outerHTML = newWrap.outerHTML;
+            replaceListPreservingScroll(oldWrap, newWrap);
             // Also refresh pagination controls if any
             const newPag = temp.querySelector('#pages .pagination');
             const oldPag = document.querySelector('#pages .pagination');
@@ -1500,7 +1543,7 @@ function getIcon($name) {
             temp.innerHTML = html;
             const newWrap = temp.querySelector('#comps-table-wrap');
             const oldWrap = document.querySelector('#comps-table-wrap');
-            if (newWrap && oldWrap) oldWrap.outerHTML = newWrap.outerHTML;
+            replaceListPreservingScroll(oldWrap, newWrap);
         } catch(err) {}
     }
 
@@ -2236,7 +2279,7 @@ function getIcon($name) {
 
                         // Language change requires full reload to apply server-side translations
                         if (action === 'save_settings' && formData.has('system_lang')) {
-                            setTimeout(() => { window.location.reload(); }, 600);
+                            setTimeout(reloadPreservingPosition, 600);
                             return;
                         }
 
