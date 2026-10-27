@@ -79,6 +79,20 @@
 
 以上で完了です。
 
+### ローカルで動かす
+
+サーバーに置かず、手元で動かすこともできます。必要なのは PHP だけです。
+
+```bash
+php -v                      # 8.0 以上であることを確認（無ければ macOS は brew install php）
+cd /path/to/mikanbox        # index.php があるフォルダ
+php -S localhost:8000
+```
+
+`http://localhost:8000/mikanBox/admin.php` を開いてパスワードを設定すれば完了です。`mikanData` と `media` は自動生成されます。
+
+このフォルダを AI のコーディングツールで開けば、AI がページの Markdown や JSON を直接読み書きできます。公開するときは静的生成した出力フォルダをアップロードするだけで、**公開側に PHP もデータも管理画面も置きません**。
+
 ---
 
 ## 想定する用途・規模

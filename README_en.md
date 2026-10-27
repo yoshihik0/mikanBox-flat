@@ -2,44 +2,52 @@
 
 [日本語 README →](README.md)
 
-**AI-era, parts-assembly, ultra-lightweight CMS**
+**No database. No build step. No Node.**
 
-🍊mikanBox flat is a file-based CMS designed to build and operate small-to-medium websites (a few to a few dozen pages) in the fastest and safest way possible. No database required — it works simply by placing it on a PHP-enabled server.
+🍊mikanBox flat is a free, file-based CMS for small and mid-sized sites. Upload it to any PHP host and edit in the browser — no database, no build tooling, no Node runtime.
+
+**AI can build it; you can still read it.** An MCP server is built in, so agents read your site's structure and design conventions and write pages directly. Your pages stay Markdown and your data stays JSON in plain folders, so you can open them afterwards and see exactly what the agent did. The instructions you give the AI are a document on the site, not hidden state.
+
+**No admin panel on the internet, if you want it that way.** Run mikanBox on your own machine and publish static files instead — the same product, a different operating style.
+
+**[Try the live demo →](https://yoshihiko.com/mikanbox/demo/)**
 
 > 🍊 *Mikan* is the Japanese word for a small, easy-to-peel mandarin orange — the fruit that gave mikanBox its name.
 
-🍊mikanBox comes in two versions: **🍊mikanBox flat** (this repository), a file-based CMS for quickly launching small sites, and **🍊mikanBox**, which uses SQLite and stays comfortable to use even on sites with more pages. Pick whichever fits your use case — data can be migrated between the two.
+### Two ways to run it
 
-For campaign or event sites, shop sites — sites with few pages but that need regular updates — use **this 🍊mikanBox flat**. For sites you'll run long-term and expect to keep growing, use **🍊mikanBox**. Data can be migrated between the two.
+|  | Where the admin lives | Attack surface |
+| :--- | :--- | :--- |
+| **Hosted** | On your server, in the browser | PHP, no database |
+| **Local + static publish** | On your own machine | None — you upload generated files only |
 
-[JSON version (flat) vs. SQLite version →](#flat)
+The second style is what makes mikanBox unusual: the admin panel never faces the internet, yet you still edit in a browser rather than in a text editor. Build to a folder and upload it anywhere that serves static files — Cloudflare Pages, a CDN, or plain shared hosting.
 
-[SQLite version 🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
+### Two editions
+
+**🍊mikanBox flat** (this repository) stores content as JSON files and suits sites up to roughly a hundred pages. **🍊mikanBox** uses SQLite and stays comfortable as the page count grows, adding revision history, an approval workflow and admin search. Content migrates between the two, so starting here does not lock you in.
+
+[Compare the two editions →](#flat) · [SQLite edition 🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
 
 ---
 
 ## Features
 
 - **File-based (JSON)** — No database required. Just place on a PHP-enabled server
-- **Modeless UI** — No page transitions; nearly all work completed on a single screen for a snappy experience
+- **Your content stays readable, and yours** — Pages are Markdown and JSON in plain folders: grep it, diff it, back it up with `cp -r`, walk away with it. No database export, no API, no lock-in — while the admin panel still handles the things files cannot, like updating every reference to a renamed image
+- **Modeless admin** — Almost everything happens on one screen, with no page reloads
 - **Markdown Support** — Easy to edit content, and also well-suited as a content archive
 - **Filter by Category** — Narrow down pages and images by category; use categories as workspaces
-- **Images Shown by Filename Alone** — Place images without thinking about file paths
+- **Reference images by filename** — No file paths to think about
 - **Component Structure** — Page templates and parts you can combine and reuse
 - **Per-component Scoped CSS** — Write CSS in small scopes without worrying about interference
-- **AI-generated Code Works As-Is** — Also supports running without any manual design work
+- **Paste AI-generated code as-is** — HTML, CSS and JS go straight in; no manual design pass needed
 - **AI Agent Integration (MCP)** — AI understands the site structure and design conventions, and reads/writes files directly
 - **DESIGN.md Management** — Manage instructions for AI right on the site, and hand them to AI
 - **Multimodal AI Support** — AI generates images and sends/places them directly in the media folder
-- **Static (SSG), Dynamic, or Mixed** — Can be a fast static site, or mix static and dynamic pages
-- **DB Less DB** — Embed data in pages and output via API. Can also be used as a headless CMS
+- **Static, dynamic, or mixed** — Choose per page; publish a fully static site or keep some pages dynamic
+- **DB Less DB** — A page entry doubles as a data table: write rows in the page, read them anywhere, serve them as JSON. Works as a headless CMS
 - **Podcast** — Auto-generate RSS for podcast distribution
-
----
-
-## Demo
-
-[https://yoshihiko.com/mikanbox/demo/](https://yoshihiko.com/mikanbox/demo/)
 
 ---
 
@@ -80,6 +88,20 @@ For campaign or event sites, shop sites — sites with few pages but that need r
 Site-specific data is created on first access in `mikanData` beside `index.php`. Existing `mikanBox/data` sites are migrated automatically only when the directory can be moved safely.
 
 That's all.
+
+### Running it locally
+
+You can run it on your own machine instead of a server. PHP is the only requirement.
+
+```bash
+php -v                      # 8.0 or later (on macOS: brew install php)
+cd /path/to/mikanbox        # the folder containing index.php
+php -S localhost:8000
+```
+
+Open `http://localhost:8000/mikanBox/admin.php`, set a password, and you are done. `mikanData` and `media` are created for you.
+
+Open this folder in an AI coding tool and the agent can read and write your pages' Markdown and JSON directly. To publish, upload the folder that static generation produces — **no PHP, no data and no admin panel go to the public side**.
 
 ---
 
@@ -166,6 +188,8 @@ Reference from another page: `{{POST_MD:pageID:price}}`
 
 ### Table-style Data (DB Less DB)
 
+A page entry doubles as a data table — a database without a database. Write rows in the page body, then read any single field from another page, or serve the whole set as JSON.
+
 ```
 {{DATAROW:row1}}
   {{DATA:name}}Product A{{/DATA}}
@@ -215,7 +239,7 @@ Then simply submit that feed to Apple Podcasts, Spotify, Amazon Music, or other 
 
 - Since no database is used, there is no attack surface for SQL injection
 - Small codebase with no dependency on plugins
-- By operating locally and uploading static files, you can keep PHP and JSON files out of the public directory, minimizing tampering risk
+- **Running locally and uploading static files leaves nothing to attack.** No PHP, no JSON, and no admin panel are published; the site is generated files, and the originals stay on your machine
 - Renaming the admin directory makes the URL harder to guess
 - `.htaccess` restricts direct access to management files
 
