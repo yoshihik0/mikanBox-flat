@@ -305,6 +305,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     require_once __DIR__ . '/lib/renderer.php';
     $renderer = new MikanBoxRenderer($settings);
 
+    if ($_POST['save_action'] === 'preview_page') {
+        if (!$isLoggedIn) { http_response_code(403); exit; }
+        require_once __DIR__ . '/lib/editor-preview.php';
+        if (ob_get_length()) ob_clean();
+        mikanBoxRenderEditorPreview($settings, $_POST);
+        exit;
+    }
+
     if ($_POST['save_action'] === 'save_page') {
         $id = $_POST['id'] ?: 'page_' . time();
         $status = $_POST['status'] ?? 'draft';
@@ -806,90 +814,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         }
     }
     elseif ($_POST['save_action'] === 'rename_media') {
-        $oldName = basename($_POST['old_filename']);
-        $newName = basename($_POST['new_filename']);
+        $oldName = basename((string)($_POST['old_filename'] ?? ''));
+        $newName = basename((string)($_POST['new_filename'] ?? ''));
         $newName = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $newName);
         $newName = preg_replace_callback('/\.[^.]+$/', fn($m) => strtolower($m[0]), $newName);
-        
-        $oldPath = MEDIA_DIR . '/' . $oldName;
-        $newPath = MEDIA_DIR . '/' . $newName;
-        
-        $confirmed = isset($_POST['confirmed']) ? $_POST['confirmed'] : null;
-        $success = false;
-        
-        if (empty($newName)) {
-            $message = t('err_filename_empty');
-        } elseif (!mediaValidFilename($newName) || strtolower(pathinfo($oldName, PATHINFO_EXTENSION)) !== strtolower(pathinfo($newName, PATHINFO_EXTENSION))) {
-            $message = t('err_media_extension_change');
-            $success = false;
-        } elseif (!file_exists($oldPath)) {
-            $message = t('err_original_file_not_found');
-        } elseif (file_exists($newPath)) {
-            $message = sprintf(t('err_rename_target_exists'), $newName);
-        } else {
-            // Find references in posts and components
-            $affectedPosts = [];
-            $postIds = getFileList(POSTS_DIR);
-            foreach ($postIds as $pid) {
-                $raw = file_get_contents(POSTS_DIR . '/' . $pid . '.json');
-                if (strpos($raw, $oldName) !== false) {
-                    $affectedPosts[] = $pid;
-                }
-            }
-            
-            $affectedComps = [];
-            $compIds = getFileList(COMPONENTS_DIR);
-            foreach ($compIds as $cid) {
-                $raw = file_get_contents(COMPONENTS_DIR . '/' . $cid . '.json');
-                if (strpos($raw, $oldName) !== false) {
-                    $affectedComps[] = $cid;
-                }
-            }
-            
-            $totalCount = count($affectedPosts) + count($affectedComps);
-            
-            if ($totalCount > 0 && is_null($confirmed)) {
+        $confirmed = $_POST['confirmed'] ?? null;
+        try {
+            if ($newName === '') throw new RuntimeException(t('err_filename_empty'));
+            if (!mediaValidFilename($oldName) || !mediaValidFilename($newName) || strtolower(pathinfo($oldName, PATHINFO_EXTENSION)) !== strtolower(pathinfo($newName, PATHINFO_EXTENSION))) throw new RuntimeException(t('err_media_extension_change'));
+            if (!is_file(MEDIA_DIR . '/' . $oldName)) throw new RuntimeException(t('err_original_file_not_found'));
+            if (file_exists(MEDIA_DIR . '/' . $newName)) throw new RuntimeException(sprintf(t('err_rename_target_exists'), $newName));
+            $count = mediaReferenceCount($oldName);
+            if ($count > 0 && $confirmed === null) {
                 header('Content-Type: application/json');
-                echo json_encode([
-                    'success' => false,
-                    'require_confirm' => true,
-                    'message' => sprintf(t('media_rename_in_use_confirm'), $totalCount)
-                ]);
+                echo json_encode(['success'=>false,'require_confirm'=>true,'message'=>sprintf(t('media_rename_in_use_confirm'), $count)]);
                 exit;
             }
-            
-            if (rename($oldPath, $newPath)) {
-                $message = sprintf(t('msg_media_renamed'), $newName);
-                $success = true;
-                
-                if ($confirmed === '1' && $totalCount > 0) {
-                    $updatedCount = 0;
-                    foreach ($affectedPosts as $pid) {
-                        $filePath = POSTS_DIR . '/' . $pid . '.json';
-                        $raw = file_get_contents($filePath);
-                        $newRaw = str_replace($oldName, $newName, $raw);
-                        if (file_put_contents($filePath, $newRaw) !== false) {
-                            $updatedCount++;
-                        }
-                    }
-                    foreach ($affectedComps as $cid) {
-                        $filePath = COMPONENTS_DIR . '/' . $cid . '.json';
-                        $raw = file_get_contents($filePath);
-                        $newRaw = str_replace($oldName, $newName, $raw);
-                        if (file_put_contents($filePath, $newRaw) !== false) {
-                            $updatedCount++;
-                        }
-                    }
-                    $message .= sprintf(t('msg_media_links_updated'), $updatedCount);
-                }
-            } else {
-                $message = t('err_rename_failed_msg');
-            }
+            $result = mediaRenameExisting($oldName, $newName, $confirmed === '1');
+            $success = true;
+            $message = sprintf(t('msg_media_renamed'), $newName);
+            if ($confirmed === '1') $message .= sprintf(t('msg_media_links_updated'), $result['updated']);
+        } catch (Throwable $error) {
+            $success = false;
+            $message = $error->getMessage();
         }
-        
         if (isset($_POST['ajax_request'])) {
             header('Content-Type: application/json');
-            echo json_encode(['success' => $success, 'message' => $message]);
+            echo json_encode(['success'=>$success,'message'=>$message]);
             exit;
         }
     }
@@ -2293,24 +2244,7 @@ function getIcon($name) {
                         // Refresh page/comp list in background after save
                         if (action === 'save_page') {
                             refreshPageList();
-                            // Inject or update preview button after first save of a new page
-                            if (json.preview_url) {
-                                const editor = document.getElementById('page-editor');
-                                if (editor) {
-                                    let previewBtn = editor.querySelector('.preview-btn');
-                                    if (!previewBtn) {
-                                        const saveBtn = editor.querySelector('button[value="save_page"]');
-                                        if (saveBtn) {
-                                            previewBtn = document.createElement('a');
-                                            previewBtn.target = '_blank';
-                                            previewBtn.className = 'btn btn-blue preview-btn';
-                                            previewBtn.innerHTML = '<span class="material-symbols-outlined icon">visibility</span> ' + <?= json_encode(t('btn_preview')) ?>;
-                                            saveBtn.insertAdjacentElement('afterend', previewBtn);
-                                        }
-                                    }
-                                    if (previewBtn) previewBtn.href = json.preview_url;
-                                }
-                            }
+
                         } else if (action === 'save_comp') {
                             refreshCompList();
                         }
@@ -2750,5 +2684,6 @@ function getIcon($name) {
     </div>
 </div>
 
+<script src="preview-editor.js?v=<?= htmlspecialchars($installedVersion) ?>" defer></script>
 </body>
 </html>
