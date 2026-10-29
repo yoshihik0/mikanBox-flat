@@ -13,7 +13,7 @@ require_once __DIR__ . '/functions-common.php';
  * @param array $data Data to save
  * @return bool Success or failure
  */
-function saveData($dir, $id, $data) {
+function mikanBoxStorageSaveData($dir, $id, $data) {
     $filePath = resolveSafeDataPath($dir, $id, '.json', true);
     if ($filePath === false) return false;
 
@@ -120,7 +120,7 @@ function loadSettings() {
 /**
  * Save settings to json file.
  */
-function saveSettings($settings) {
+function mikanBoxStorageSaveSettings($settings) {
     $settingsFile = SETTINGS_FILE;
     return file_put_contents($settingsFile, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
 }
