@@ -27,7 +27,9 @@ The second style is what makes mikanBox unusual: the admin panel never faces the
 
 **🍊mikanBox flat** (this repository) stores content as JSON files and suits sites up to roughly a hundred pages. **🍊mikanBox** uses SQLite and stays comfortable as the page count grows, adding revision history, an approval workflow and admin search. Content migrates between the two, so starting here does not lock you in.
 
-[Compare the two editions →](#flat) · [SQLite edition 🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
+A third edition, **🍊mikanBox Cloud** (under development), runs on Cloudflare Workers and D1 and manages and publishes everything on Cloudflare. If you run mikanBox on your own computer and just upload a static site, flat is enough; choose Cloud when you want to manage the site itself on Cloudflare.
+
+[Compare flat and SQLite →](#flat) · [SQLite edition 🍊mikanBox →](https://github.com/yoshihik0/mikanBox) · [☁️ 🍊mikanBox Cloud →](https://github.com/yoshihik0/mikanBox-cloud)
 
 ---
 

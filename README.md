@@ -6,13 +6,15 @@
 
 🍊mikanBox flatは、数ページから数十ページ規模のWebサイトを、最速かつ安全に構築・運用するために設計されたファイルベースCMSです。データベース不要。PHPが使えるサーバーに置くだけで動きます。
 
-🍊mikanBoxには、小規模サイトを手軽に作れるファイルベースCMSの🍊mikanBox flat（本リポジトリ）と、SQLiteを使用してページ数の多いサイトにも使いやすい🍊mikanBoxがあります。用途に応じてお選びください。両者間では、データの移行も可能です。
+🍊mikanBoxには、小規模サイトを手軽に作れるファイルベースCMSの🍊mikanBox flat（本リポジトリ）と、SQLiteを使用してページ数の多いサイトにも使いやすい🍊mikanBox、Cloudflare上で管理も公開も行う🍊mikanBox Cloud（開発中）があります。用途に応じてお選びください。flatとSQLite版の間では、データの移行も可能です。
 
-キャンペーンやイベントのサイト、店舗のサイトなど、ページ数は少ないけど更新は必要というサイトには、こちらの🍊mikanBox flat、長期的に運用し、ページの増加が見込まれるサイトは、🍊mikanBoxをご利用ください。両者は、データの移行も可能です。
+キャンペーンやイベントのサイト、店舗のサイトなど、ページ数は少ないけど更新は必要というサイトには、こちらの🍊mikanBox flat、長期的に運用し、ページの増加が見込まれるサイトは、🍊mikanBoxをご利用ください。
+
+ローカルで動かして静的サイトとしてアップするだけなら、こちらの🍊mikanBox flatで十分です。管理そのものをCloudflare上で行いたい場合に、🍊mikanBox Cloudをご利用ください。
 
 [JSON版（flat）とSQLite版の違い →](#flat)
 
-[SQLite版　🍊mikanBox →](https://github.com/yoshihik0/mikanBox)
+[SQLite版　🍊mikanBox →](https://github.com/yoshihik0/mikanBox)　[☁️ 🍊mikanBox Cloud →](https://github.com/yoshihik0/mikanBox-cloud)
 
 ---
 
