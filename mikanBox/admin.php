@@ -1171,7 +1171,8 @@ function getIcon($name) {
         'copy' => 'content_copy',
         'open_in_new' => 'open_in_new',
         'reset' => 'restart_alt',
-        'check' => 'check'
+        'check' => 'check',
+        'visual' => 'edit_square'
     ];
     $iconName = $icons[$name] ?? '';
     return $iconName ? '<span class="material-symbols-outlined icon">' . $iconName . '</span>' : '';

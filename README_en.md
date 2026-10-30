@@ -38,6 +38,7 @@ A third edition, **🍊mikanBox Cloud** (under development), runs on Cloudflare 
 - **File-based (JSON)** — No database required. Just place on a PHP-enabled server
 - **Your content stays readable, and yours** — Pages are Markdown and JSON in plain folders: grep it, diff it, back it up with `cp -r`, walk away with it. No database export, no API, no lock-in — while the admin panel still handles the things files cannot, like updating every reference to a renamed image
 - **Modeless admin** — Almost everything happens on one screen, with no page reloads
+- **Visual editing** — Open a page exactly as it looks and click to edit it; page CSS applies as you type (flat edition only)
 - **Markdown Support** — Easy to edit content, and also well-suited as a content archive
 - **Filter by Category** — Narrow down pages and images by category; use categories as workspaces
 - **Reference images by filename** — No file paths to think about
