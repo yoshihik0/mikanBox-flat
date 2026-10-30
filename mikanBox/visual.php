@@ -99,7 +99,9 @@ function mbv_render(string $id, ?array $override = null): ?string {
 
 // ---------------------------------------------------------------- ログインの確認（管理画面と同じセッション）
 $S = $GLOBALS['mikanbox_settings'] ?? [];
-$loggedIn = (($_SESSION['admin_logged_in'] ?? false) === true) && !empty($S['password_hash']) && empty($S['demo_mode']);
+// flat版は設定にパスワードがあること、SQLite版（端末認証）は管理画面と同じログイン済みのセッションであること
+$hasAccount = function_exists('getPreviewToken') ? true : !empty($S['password_hash']);
+$loggedIn = (($_SESSION['admin_logged_in'] ?? false) === true) && $hasAccount && empty($S['demo_mode']);
 $isApi = isset($_GET['api']);
 if (!$loggedIn) {
     if ($isApi) mbv_json(['error' => t('visual_err_login'), 'login' => true], 401);
@@ -135,6 +137,12 @@ if ($isApi) {
             if (isset($in['text'])) $data['content_md'] = (string)$in['text'];
             mbv_json(['html' => mbv_render($id, $data)]);
         }
+        case 'points':      mbv_json(['points' => mbv_points($id)]);
+        case 'restore': {
+            if (!$post) mbv_json(['error' => 'method'], 405);
+            if (!mbv_point_restore($id, (string)($in['point'] ?? ''), (string)($in['sid'] ?? ''))) mbv_json(['error' => t('visual_err_point_missing')], 409);
+            mbv_json(['ok' => true] + mbv_counts($id));
+        }
         case 'undo': case 'redo': {
             if (!$post) mbv_json(['error' => 'method'], 405);
             if (!mbv_history_move($id, $api)) mbv_json(['error' => $api === 'undo' ? t('visual_err_undo_none') : t('visual_err_redo_none')], 409);
@@ -145,7 +153,7 @@ if ($isApi) {
             $data = loadData(POSTS_DIR, $id); $orig = (string)($data['css'] ?? '');
             if (mbv_nl($orig) !== ($in['old'] ?? null)) mbv_json(['error' => t('visual_err_css_changed')], 409);
             $new = mbv_nl((string)($in['new'] ?? ''));
-            mbv_snapshot($id);
+            mbv_snapshot($id, (string)($in['sid'] ?? ''));
             $data['css'] = strpos($orig, "\r\n") !== false ? str_replace("\n", "\r\n", $new) : $new;
             mbv_json(['ok' => (bool)saveData(POSTS_DIR, $id, $data)] + mbv_counts($id));
         }
@@ -154,7 +162,7 @@ if ($isApi) {
             $data = loadData(POSTS_DIR, $id); $orig = (string)($data['content_md'] ?? '');
             if (mbv_nl($orig) !== ($in['old'] ?? null)) mbv_json(['error' => t('visual_err_body_changed')], 409);
             $new = mbv_nl((string)($in['new'] ?? ''));
-            mbv_snapshot($id);
+            mbv_snapshot($id, (string)($in['sid'] ?? ''));
             $data['content_md'] = strpos($orig, "\r\n") !== false ? str_replace("\n", "\r\n", $new) : $new;
             mbv_json(['ok' => (bool)saveData(POSTS_DIR, $id, $data)] + mbv_counts($id));
         }
@@ -174,7 +182,7 @@ if ($isApi) {
             } elseif ($mode === 'insert-after') array_splice($lines, $b + 1, 0, array_merge([''], explode("\n", $new)));
             elseif ($mode === 'insert-before') array_splice($lines, $a, 0, array_merge(explode("\n", $new), ['']));
             else array_splice($lines, $a, $b - $a + 1, explode("\n", $new));
-            mbv_snapshot($id);
+            mbv_snapshot($id, (string)($in['sid'] ?? ''));
             $joined = implode("\n", $lines);
             $data['content_md'] = $crlf ? str_replace("\n", "\r\n", $joined) : $joined;
             mbv_json(['ok' => (bool)saveData(POSTS_DIR, $id, $data)] + mbv_counts($id));

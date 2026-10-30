@@ -32,7 +32,8 @@
   }
   function jfetch(url, opts) { return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); }); }
   var CSRF = window.__VISUAL_CSRF || '';
-  function post(url, body) { return jfetch(url, { method: 'POST', headers: { 'X-CSRF-Token': CSRF }, body: JSON.stringify(body) }); }
+  var SID = (function () { var a = new Uint8Array(12); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (b) { return (b % 36).toString(36); }).join(''); })();   // ページを開くたびに変わる「編集の作業」の目印
+  function post(url, body) { if (body && typeof body === 'object') body.sid = SID; return jfetch(url, { method: 'POST', headers: { 'X-CSRF-Token': CSRF }, body: JSON.stringify(body) }); }
   function scopeEl() { return document.querySelector('.mikan-content-scope'); }
   var PAGES = window.__VISUAL_PAGES || [];
   // 最近開いたページ（このブラウザだけ。サイトごと）
@@ -79,13 +80,14 @@
   var sep1 = el('span', 'fv-sep');
   var tgUndo = ibtn('undo', T('visual_js_undo_title'), 'fv-toggle fv-icon');
   var tgRedo = ibtn('redo', T('visual_js_redo_title'), 'fv-toggle fv-icon');
+  var tgPoints = ibtn('history', T('visual_js_points_title'), 'fv-toggle fv-icon');
   var sep2 = el('span', 'fv-sep');
   var tgView = ibtn('devices', T('visual_js_view_title'), 'fv-toggle fv-icon');
   var tgInspect = ibtn('search', T('visual_js_inspect_title'), 'fv-toggle fv-icon');
   var tgMd = ibtn('edit_note', T('visual_js_md_title'), 'fv-toggle', T('visual_js_md_label'));
   var tgCss = ibtn('palette', T('visual_js_css_title'), 'fv-toggle', 'CSS');
   var tgEdit = ibtn('edit', T('visual_js_edit_toggle_title'), 'fv-toggle');
-  dock.append(tgPages, lnkList, lnkPage, sep1, tgUndo, tgRedo, sep2, tgView, tgInspect, tgMd, tgCss, tgEdit); document.body.appendChild(dock);
+  dock.append(tgPages, lnkList, lnkPage, sep1, tgUndo, tgRedo, tgPoints, sep2, tgView, tgInspect, tgMd, tgCss, tgEdit); document.body.appendChild(dock);
   function paintEdit() { tgEdit.innerHTML = ic('edit') + '<span class="fv-lb">' + H(on ? T('visual_js_editing') : T('visual_js_edit_off')) + '</span>'; tgEdit.classList.toggle('active', on); }
   paintEdit();
   tgEdit.addEventListener('click', function () { on = !on; sessionStorage.setItem('fv-on', on ? '1' : '0'); root.classList.toggle('fv-on', on); paintEdit(); });
@@ -121,6 +123,36 @@
     e.preventDefault(); history(e.shiftKey ? 'redo' : 'undo');
   });
   refreshHistory();
+
+  // ---------------------------------------------------------------- 編集の履歴（作業の前の状態に戻す）
+  var pointsBox = null;
+  function closePoints() { if (pointsBox) { pointsBox.remove(); pointsBox = null; } tgPoints.classList.remove('active'); }
+  tgPoints.addEventListener('click', function () {
+    if (pointsBox) { closePoints(); return; }
+    tgPoints.classList.add('active');
+    pointsBox = el('div', 'fv-drawer fv-ui');
+    var head = el('div', 'fv-drawer-head'), ttl = el('div', 'fv-create-title', T('visual_js_points_head')); ttl.style.flex = '1';
+    var close = ibtn('close', T('btn_close')); close.addEventListener('click', closePoints); head.append(ttl, close);
+    var note = el('div', 'fv-drawer-more', T('visual_js_points_note')), list = el('div', 'fv-drawer-list');
+    pointsBox.append(head, note, list); document.body.appendChild(pointsBox);
+    jfetch(API('points') + '&id=' + encodeURIComponent(PAGE), { cache: 'no-store' }).then(function (x) {
+      var pts = (x.j && x.j.points) || [];
+      if (!pts.length) { list.append(el('div', 'fv-drawer-row', T('visual_js_points_empty'))); return; }
+      pts.forEach(function (p) {
+        var r = el('a', 'fv-drawer-row'); r.href = '#'; r.append(el('span', 't', p.at));
+        r.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (active && active.dirty() && !confirm(T('visual_js_confirm_undo'))) return;
+          if (!confirm(T('visual_js_point_confirm', p.at))) return;
+          post(API('restore'), { id: PAGE, point: p.id }).then(function (y) {
+            if (!y.ok) { toast(y.j.error || T('visual_js_failed')); return; }
+            sessionStorage.setItem('fv-scroll', String(window.scrollY)); location.reload();
+          });
+        });
+        list.append(r);
+      });
+    }).catch(function () {});
+  });
 
   // ---------------------------------------------------------------- ショートカット（入力欄の外で）: g l = 管理画面（ページ一覧） / g e = このページの設定（管理画面） / g p = ページ選択
   var gPending = false, gTimer = null;

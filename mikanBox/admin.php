@@ -6,6 +6,7 @@ ob_start();
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/functions.php';
+if (is_file(__DIR__ . '/lib/visual-history.php')) require_once __DIR__ . '/lib/visual-history.php';
 define('MIKANBOX', true);
 require_once __DIR__ . '/lib/updater.php';
 $installedVersion = mikanBoxUpdateReadVersion(CORE_DIR . '/config.php') ?: MIKANBOX_VERSION;
@@ -386,6 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             $oldId = $_POST['old_id'] ?? null;
             if ($oldId && $oldId !== $id) {
                 deleteData(POSTS_DIR, $oldId);
+                if (function_exists('mbv_hist_forget')) mbv_hist_forget($oldId);   // ビジュアル編集の履歴
                 // Also delete old static files
                 require_once __DIR__ . '/lib/ssg.php';
                 $ssg = new MikanBoxSSG($renderer, $activeSsgAbsPath);
@@ -452,6 +454,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         // back to the 404 page in MikanBoxRenderer::render(), so there's nothing unsafe
         // about deleting it like any other page.
         if (deleteData(POSTS_DIR, $id)) {
+            if (function_exists('mbv_hist_forget')) mbv_hist_forget($id);   // ビジュアル編集の履歴
             $_SESSION['admin_message'] = t('msg_page_deleted', $id);
             header("Location: admin.php?view=pages");
             exit;
@@ -966,6 +969,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                         $filePath = $file->getRealPath();
                         $relativePath = $mode . '/' . substr($filePath, strlen($sourceDir) + 1);
                         if ($mode === 'data' && strpos(basename($filePath), 'backup_') === 0) continue; 
+                        if ($mode === 'data' && strpos($relativePath, 'data/visual-history/') === 0) continue;   // ビジュアル編集の履歴は、バックアップに含めない
                         $zip->addFile($filePath, $relativePath);
                     }
                 }

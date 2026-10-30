@@ -50,7 +50,9 @@ with tempfile.TemporaryDirectory(prefix='mikanbox-visual-test-') as tmp:
     shutil.copy2(PROJECT / 'index.php', site / 'index.php')
     shutil.copytree(PROJECT / 'mikanBox', site / 'mikanBox', ignore=shutil.ignore_patterns('.DS_Store', 'docs'))
     password = secrets.token_hex(16)
-    php(site, 'saveSettings(["password_hash"=>password_hash(' + json.dumps(password) + ',PASSWORD_DEFAULT)]);')
+    SQLITE = (PROJECT / 'mikanBox/lib/device-auth.php').exists()      # 端末認証があるのがSQLite版
+    if not SQLITE:
+        php(site, 'saveSettings(["password_hash"=>password_hash(' + json.dumps(password) + ',PASSWORD_DEFAULT)]);')
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
@@ -106,7 +108,16 @@ with tempfile.TemporaryDirectory(prefix='mikanbox-visual-test-') as tmp:
 
         # ---- 2. ログイン（管理画面と同じ）
         ed = mk()
-        req(ed, ADM, urllib.parse.urlencode({'login_action': 'login', 'password': password}).encode(), {'Content-Type': 'application/x-www-form-urlencoded'}, 'POST')
+        def form(opener, data):
+            return req(opener, ADM, urllib.parse.urlencode(data).encode(), {'Content-Type': 'application/x-www-form-urlencoded'}, 'POST')
+        if SQLITE:
+            tok = secrets.token_hex(24)
+            (site / 'setup-token').mkdir(exist_ok=True)
+            (site / 'setup-token/setup-token.txt').write_text(tok)
+            _, adm, _ = req(ed, ADM)
+            form(ed, {'login_action': 'setup', 'csrf_token': re.search(r'name="csrf_token" value="([^"]+)"', adm)[1], 'username': 'editor', 'display_name': 'Editor', 'device_name': 'Test', 'setup_token': tok})
+        else:
+            form(ed, {'login_action': 'login', 'password': password})
         st, txt, hd = req(ed, VIS)
         check(st == 200 and 'ビジュアル編集' in txt and 'class="row"' in txt, 'logged-in editor sees the page picker')
         csp = hd.get('Content-Security-Policy', '')
@@ -161,6 +172,50 @@ with tempfile.TemporaryDirectory(prefix='mikanbox-visual-test-') as tmp:
         check(st == 409, 'nothing left to undo')
         st, _, _ = api(ed, 'undo', {'id': 'index'})
         check(st == 403, 'undo without token is refused')
+
+        # ---- 5b. 履歴: 編集の作業ごとに復元ポイント1件（10件まで）、元に戻すは直近3回分
+        def cur_text():
+            return api(ed, 'source', query='&id=index')[1]['text']
+        base_text = cur_text()
+        p0 = len(api(ed, 'points', query='&id=index')[1]['points'])
+        def edit(sid, n):
+            t = cur_text()
+            return api(ed, 'save-md', {'id': 'index', 'old': t, 'new': t + '\nsid-' + str(n), 'sid': sid}, token=token)
+        st, r, _ = edit('sessionAAAA1', 1)
+        check(st == 200 and r['points'] == p0 + 1 and r['undo'] == 1, 'first save of an editing session makes one restore point')
+        for n in range(2, 7):
+            st, r, _ = edit('sessionAAAA1', n)
+        check(r['points'] == p0 + 1, 'more saves in the same session do not add restore points')
+        check(r['undo'] == 3, 'undo history keeps only the last 3 steps')
+        st, r, _ = edit('sessionBBBB2', 7)
+        check(r['points'] == p0 + 2 and r['undo'] == 1, 'a new session adds a restore point and drops the old undo steps')
+        for k in range(12):
+            edit('sess%08d' % k, 100 + k)
+        st, r, _ = api(ed, 'points', query='&id=index')
+        check(st == 200 and len(r['points']) == 10, 'restore points are limited to 10')
+        st, r, _ = api(anon, 'points', query='&id=index')
+        check(st == 401, 'restore point list needs login')
+        st, r, _ = api(ed, 'restore', {'id': 'index', 'point': '12345678901234567890', 'sid': 'zzzzzzzzzz'}, token=token)
+        check(st == 409, 'unknown restore point is refused')
+        st, r, _ = api(ed, 'restore', {'id': 'index', 'point': '../../settings', 'sid': 'zzzzzzzzzz'}, token=token)
+        check(st == 409, 'restore point id with path characters is refused')
+        st, pts, _ = api(ed, 'points', query='&id=index')
+        oldest = pts['points'][-1]['id']
+        st, r, _ = api(ed, 'restore', {'id': 'index', 'point': oldest}, token=None)
+        check(st == 403, 'restore without token is refused')
+        before = cur_text()
+        st, r, _ = api(ed, 'restore', {'id': 'index', 'point': oldest, 'sid': 'restoresess1'}, token=token)
+        check(st == 200 and cur_text() != before and 'sid-102' not in cur_text() and 'sid-101' in cur_text(), 'restoring a point goes back to the state before that session')
+        st, r, _ = api(ed, 'undo', {'id': 'index'}, token=token)
+        check(st == 200 and cur_text() == before, 'a restore can be undone')
+        php(site, "mbv_hist_forget('index');" if False else "require_once $argv[1].'/mikanBox/lib/visual-history.php'; mbv_hist_forget('index');")
+        st, r, _ = api(ed, 'history', query='&id=index')
+        check(r['undo'] == 0 and r['redo'] == 0, 'forgetting a page removes its undo history')
+        if not SQLITE:   # SQLite版の復元ポイントは、管理画面のページ履歴（ページ削除のときに管理画面が消す）
+            check(api(ed, 'points', query='&id=index')[1]['points'] == [], 'forgetting a page removes its restore points')
+        # 元の本文に戻しておく（以降のテストのため）
+        t = cur_text()
+        api(ed, 'save-md', {'id': 'index', 'old': t, 'new': base_text, 'sid': 'resetsession1'}, token=token)
 
         # ---- 6. 本文全体・CSV・描画
         st, r, _ = api(ed, 'save-css', {'id': 'index', 'old': '', 'new': 'h1{color:red}'}, token=token)
@@ -241,11 +296,12 @@ with tempfile.TemporaryDirectory(prefix='mikanbox-visual-test-') as tmp:
         check('"visual_js_saved":"保存しました"' in page, 'JS strings are delivered in Japanese')
 
         # ---- 10. ログアウト後は、すべて断る
-        req(ed, ADM + '?action=logout')
-        st, _, _ = api(ed, 'source', query='&id=index')
-        check(st == 401, 'API is refused after logout')
-        st, txt, hd = req(ed, VIS + '?id=index')
-        check(st == 302, 'page is refused after logout')
+        if not SQLITE:   # SQLite版には、ログアウトがない（端末を停止する）
+            req(ed, ADM + '?action=logout')
+            st, _, _ = api(ed, 'source', query='&id=index')
+            check(st == 401, 'API is refused after logout')
+            st, txt, hd = req(ed, VIS + '?id=index')
+            check(st == 302, 'page is refused after logout')
 
         # ---- 11. 出力が汚れていない（PHPの警告・通知がない）
         log.seek(0)
