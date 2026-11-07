@@ -186,7 +186,6 @@ function mikanBoxStorageSaveSettings($settings) {
         $current = loadSettings();
         $expected = $GLOBALS['mikanbox_initial_password_hash'] ?? (string)($current['password_hash'] ?? '');
         if (!hash_equals((string)($current['password_hash'] ?? ''), $expected)) return false;
-        if (!empty($settings['demo_mode'])) $settings['mcp_api_key'] = '';
         $json = json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         if ($json === false) return false;
         $tmp = tempnam(DATA_DIR, '.settings-');
@@ -242,10 +241,3 @@ function bootstrapFreshInstallFromImport() {
 bootstrapFreshInstallFromImport();
 
 
-// A demo must not retain a credential that could become live when the demo is disabled.
-$demoSettings = loadSettings();
-if (!empty($demoSettings['demo_mode']) && !empty($demoSettings['mcp_api_key'])) {
-    $demoSettings['mcp_api_key'] = '';
-    if (!saveSettings($demoSettings)) throw new RuntimeException('Cannot disable demo credentials.');
-}
-unset($demoSettings);

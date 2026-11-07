@@ -25,16 +25,13 @@ $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_
 // Pass reference as a global variable (Fix #8)
 $GLOBALS['mikanbox_settings'] = &$settings;
 $passwordHash = $settings['password_hash'] ?? '';
-$isDemoMode = !empty($settings['demo_mode']);
 $loginError = ''; // Initialize loginError
 
 // Logout process
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     mikanBoxClearAuthentication();
     mikanBoxRenewAuthentication();
-    // In demo mode, redirect to login form after logout
-    $redirect = $isDemoMode ? basename($_SERVER['PHP_SELF']) . '?login=1' : basename($_SERVER['PHP_SELF']);
-    header('Location: ' . $redirect);
+    header('Location: ' . basename($_SERVER['PHP_SELF']));
     exit;
 }
 
@@ -112,8 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
 }
 
 // Show login screen if not logged in
-// In demo mode, allow access without login (unless ?login=1 is requested for full access)
-if (empty($passwordHash) || (!$isLoggedIn && (!$isDemoMode || isset($_GET['login'])))) {
+if (empty($passwordHash) || !$isLoggedIn) {
     if (ob_get_length()) ob_clean();
 ?>
 <!DOCTYPE html>
@@ -151,18 +147,12 @@ if (empty($passwordHash) || (!$isLoggedIn && (!$isDemoMode || isset($_GET['login
             <div class="error"><?= $setupState === 'weak' ? t('device_token_weak', MIKANBOX_SETUP_TOKEN_MIN_LENGTH) : t('flat_token_missing') ?></div>
             <?php endif; ?>
         <?php else: ?>
-            <?php if ($isDemoMode): ?>
-            <p><?= t('hint_demo_login') ?></p>
-            <?php endif; ?>
             <form method="post">
                 <?php require __DIR__ . '/views/site-sections/password-account.php'; ?>
                 <input type="hidden" name="login_action" value="login">
                 <input type="password" name="password" autocomplete="current-password" placeholder="<?= t('admin_password') ?>" required autofocus>
                 <button type="submit"><?= t('btn_login') ?></button>
             </form>
-            <?php if ($isDemoMode): ?>
-            <p><a href="<?= basename($_SERVER['PHP_SELF']) ?>"><?= t('btn_demo_back') ?></a></p>
-            <?php endif; ?>
         <?php endif; ?>
             <p class="login-hint">
                 <?= t('admin_forgot_password_flat') ?><br>
@@ -285,19 +275,6 @@ unset($_SESSION['admin_message']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
         die(t('err_csrf'));
-    }
-
-    // Demo mode: block write operations if not logged in with password
-    if ($isDemoMode && (!$isLoggedIn || in_array($_POST['save_action'], ['generate_mcp_key', 'set_mcp_enabled'], true))) {
-        $message = t('msg_demo_mode');
-        goto skip_post_actions;
-    }
-
-    // The public demo is never updated or restored, not even by a signed-in administrator.
-    if ($isDemoMode && in_array($_POST['save_action'], ['system_update', 'system_restore'], true)) {
-        $_SESSION['admin_message'] = t('msg_demo_no_update');
-        header('Location: admin.php?view=settings', true, 303);
-        exit;
     }
 
     if (in_array($_POST['save_action'], ['system_update', 'system_restore'], true)) {
@@ -1271,11 +1248,7 @@ function getIcon($name) {
          ============================================== -->
     <div class="page-top-links">
         <a href="<?= $lastSsgRelPath ?>" target="_blank"><?= t('admin_view_site') ?></a>
-        <?php if ($isDemoMode && !$isLoggedIn): ?>
-        <a href="?login=1"><?= t('btn_login') ?></a>
-        <?php else: ?>
         <a href="?action=logout"><?= t('admin_logout') ?></a>
-        <?php endif; ?>
     </div>
     
     <!-- Category Cloud -->
