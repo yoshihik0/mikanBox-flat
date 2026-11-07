@@ -88,7 +88,8 @@ For the PHP editions, the minimum version describes compatibility. Use the lates
 
 1. Upload the `mikanBox` folder and `index.php` to your server
 2. For security, we recommend renaming the `mikanBox` folder to a name of your choice (if renamed, also update the `$core_dir` variable at the top of `index.php` to match)
-3. Access `{your-admin-folder}/admin.php` to set your admin password
+3. Write a random string (at least 20 characters, used once) on one line in `setup-token.txt` inside the `setup-token` folder, and upload the `setup-token` folder too
+4. Access `{your-admin-folder}/admin.php` and enter that token and your admin password (at least 7 characters)
 
 Site-specific data is created on first access in `mikanData` beside `index.php`. Existing `mikanBox/data` sites are migrated automatically only when the directory can be moved safely.
 
@@ -104,7 +105,7 @@ cd /path/to/mikanbox        # the folder containing index.php
 php -S localhost:8000
 ```
 
-Open `http://localhost:8000/mikanBox/admin.php`, set a password, and you are done. `mikanData` and `media` are created for you.
+Open `http://localhost:8000/mikanBox/admin.php`, set a password (at least 7 characters), and you are done. No token is needed locally. `mikanData` and `media` are created for you.
 
 Open this folder in an AI coding tool and the agent can read and write your pages' Markdown and JSON directly. To publish, upload the folder that static generation produces — **no PHP, no data and no admin panel go to the public side**.
 

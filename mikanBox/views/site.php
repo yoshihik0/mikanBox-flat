@@ -143,7 +143,7 @@
                         </div>
                         <div class="form-group">
                             <label><?= t('admin_new_password') ?></label>
-                            <input type="password" required minlength="4" name="new_password" autocomplete="new-password" style="max-width:300px;">
+                            <input type="password" required minlength="7" name="new_password" autocomplete="new-password" style="max-width:300px;">
                         </div>
                         <button type="submit" class="btn btn-blue btn-small"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
                     </form>

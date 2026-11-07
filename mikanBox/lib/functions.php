@@ -1,10 +1,68 @@
 <?php
+if (PHP_SAPI !== 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) { http_response_code(403); exit; } // direct request guard
 // ==========================================
 // mikanBox Core Functions (lib/functions.php)
 // ==========================================
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/functions-common.php';
+
+// ---- Setup token: the first registration on a server (not needed on this computer itself) ----
+
+const MIKANBOX_SETUP_TOKEN_MIN_LENGTH = 20;
+const MIKANBOX_SETUP_TOKEN_MIN_DISTINCT = 8;
+const MIKANBOX_SETUP_TOKEN_TEMPLATE = "# ここに、ランダムな文字列（20文字以上）を1行で書いてください。「#」で始まる行は読み込まれません。\n"
+    . "# 1度しか使わないので、長く覚えておく必要はありません。\n"
+    . "# Write a random string (at least 20 characters) on one line below. Lines starting with \"#\" are ignored.\n"
+    . "# It is used only once.\n";
+
+function mikanBoxSetupTokenDir(): string {
+    return dirname(CORE_DIR) . '/setup-token';
+}
+
+function mikanBoxSetupTokenFile(): string {
+    return mikanBoxSetupTokenDir() . '/setup-token.txt';
+}
+
+/** The folder ships with mikanBox; recreate whatever an update or upload left out. */
+function mikanBoxSetupTokenEnsureFolder(): void {
+    $dir = mikanBoxSetupTokenDir();
+    if (!is_dir($dir) && !@mkdir($dir, 0755)) return;
+    $htaccess = $dir . '/.htaccess';
+    if (!is_file($htaccess)) {
+        @file_put_contents($htaccess, "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+            . "<IfModule !mod_authz_core.c>\n    Order deny,allow\n    Deny from all\n</IfModule>\n");
+    }
+    if (!is_file($dir . '/setup-token.txt')) @file_put_contents($dir . '/setup-token.txt', MIKANBOX_SETUP_TOKEN_TEMPLATE);
+}
+
+/** The first line of the token file that is not blank and not a "#" comment, or ''. */
+function mikanBoxSetupToken(): string {
+    $file = mikanBoxSetupTokenFile();
+    if (!is_file($file) || !is_readable($file)) return '';
+    foreach (preg_split('/\r\n|\n|\r/', (string)file_get_contents($file)) ?: [] as $line) {
+        $line = trim($line);
+        if ($line !== '' && $line[0] !== '#') return $line;
+    }
+    return '';
+}
+
+/** The token is spent: put the instructions back so no used value lingers on the server. */
+function mikanBoxSetupTokenReset(): void {
+    if (is_dir(mikanBoxSetupTokenDir())) @file_put_contents(mikanBoxSetupTokenFile(), MIKANBOX_SETUP_TOKEN_TEMPLATE);
+}
+
+/** 'missing' | 'weak' | 'ready' */
+function mikanBoxSetupTokenState(): string {
+    $token = mikanBoxSetupToken();
+    if ($token === '') return 'missing';
+    if (strlen($token) < MIKANBOX_SETUP_TOKEN_MIN_LENGTH || count(array_unique(str_split($token))) < MIKANBOX_SETUP_TOKEN_MIN_DISTINCT) return 'weak';
+    return 'ready';
+}
+
+function mikanBoxSetupTokenMatches(string $input): bool {
+    return mikanBoxSetupTokenState() === 'ready' && hash_equals(mikanBoxSetupToken(), trim($input));
+}
 
 /**
  * Save data as JSON format.

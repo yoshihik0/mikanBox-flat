@@ -78,7 +78,8 @@ PHP版の最低動作要件は互換性の目安です。新規導入・イン�
 
 1. `mikanBox` フォルダと `index.php` をサーバーにアップロード
 2. セキュリティのため `mikanBox` フォルダ名を任意の名前に変更推奨（変更した場合は `index.php` 上部の `$core_dir` も同じ名前に変更）
-3. `{管理フォルダ名}/admin.php` にアクセスして管理者パスワードを設定
+3. `setup-token` フォルダの `setup-token.txt` にランダムな文字列（20文字以上、1度だけ使う）を1行で書き、`setup-token` フォルダもアップロードする
+4. `{管理フォルダ名}/admin.php` にアクセスして、そのトークンと管理者パスワード（7文字以上）を入力
 
 サイト固有のデータは、初回アクセス時に `index.php` と同じ階層の `mikanData` へ作成されます。旧 `mikanBox/data` があるサイトは、安全に移動できる場合だけ自動移行されます。
 
@@ -94,7 +95,7 @@ cd /path/to/mikanbox        # index.php があるフォルダ
 php -S localhost:8000
 ```
 
-`http://localhost:8000/mikanBox/admin.php` を開いてパスワードを設定すれば完了です。`mikanData` と `media` は自動生成されます。
+`http://localhost:8000/mikanBox/admin.php` を開いてパスワード（7文字以上）を設定すれば完了です。ローカルではトークンは不要です。`mikanData` と `media` は自動生成されます。
 
 このフォルダを AI のコーディングツールで開けば、AI がページの Markdown や JSON を直接読み書きできます。公開するときは静的生成した出力フォルダをアップロードするだけで、**公開側に PHP もデータも管理画面も置きません**。
 

@@ -43,7 +43,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
     if ($_POST['login_action'] === 'set_initial_password' && empty($passwordHash)) {
         // Initial password setup
         $pass = $_POST['new_password'] ?? '';
-        if (strlen($pass) < 4) {
+        $setupRateId = getClientIp() . '|setup';
+        $setupLocked = checkLoginRateLimit($setupRateId);
+        // On this computer itself no token is needed; on a server the token proves ownership.
+        $setupNeedsToken = !mikanBoxIsLocalRequest();
+        if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+            $loginError = t('err_csrf');
+        } elseif ($setupLocked > 0) {
+            $loginError = t('err_rate_limited', (int)ceil($setupLocked / 60));
+        } elseif ($setupNeedsToken && !mikanBoxSetupTokenMatches($_POST['setup_token'] ?? '')) {
+            recordLoginFailure($setupRateId);
+            $loginError = t('err_setup_token_invalid');
+        } elseif (strlen($pass) < 7) {
             $loginError = t('err_password_chars');
         } else {
             // Populate defaults on first-time setup
@@ -69,6 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                     $htaccessContent = "DirectoryIndex index.php\n\n<IfModule mod_rewrite.c>\n    RewriteEngine On\n    RewriteCond %{REQUEST_FILENAME} -f [OR]\n    RewriteCond %{REQUEST_FILENAME} -d\n    RewriteRule ^ - [L]\n    RewriteRule ^ index.php [L,QSA]\n</IfModule>\n";
                     @file_put_contents($htaccessPath, $htaccessContent);
                 }
+                if ($setupNeedsToken) mikanBoxSetupTokenReset();
+                clearLoginAttempts($setupRateId);
                 mikanBoxRenewAuthentication();
                 $_SESSION['admin_logged_in'] = true;
             $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
@@ -116,13 +129,27 @@ if (empty($passwordHash) || (!$isLoggedIn && (!$isDemoMode || isset($_GET['login
         <div class="login-title"><span>🍊</span><span>mikanBox flat</span></div>
         <?php if(!empty($loginError)) echo "<div class='error'>{$loginError}</div>"; ?>
         <?php if (empty($passwordHash)): ?>
-            <p><strong><?= t('hint_initial_setup') ?></strong><br><?= t('hint_setup_msg') ?></p>
+            <?php
+            $setupLocal = mikanBoxIsLocalRequest();
+            $setupState = $setupLocal ? 'ready' : mikanBoxSetupTokenState();
+            if (!$setupLocal) mikanBoxSetupTokenEnsureFolder();
+            ?>
+            <p><strong><?= t('hint_initial_setup') ?></strong></p>
+            <?php if ($setupState === 'ready'): ?>
+            <p><?= $setupLocal ? t('hint_setup_msg') : t('hint_setup_msg_token') ?></p>
             <form method="post">
+                <?= csrfField() ?>
                 <?php require __DIR__ . '/views/site-sections/password-account.php'; ?>
                 <input type="hidden" name="login_action" value="set_initial_password">
-                <input type="password" name="new_password" autocomplete="new-password" placeholder="<?= t('admin_new_password') ?>" required autofocus>
+                <?php if (!$setupLocal): ?>
+                <input type="password" name="setup_token" autocomplete="off" placeholder="<?= t('device_label_setup_token') ?>" required autofocus>
+                <?php endif; ?>
+                <input type="password" name="new_password" autocomplete="new-password" minlength="7" placeholder="<?= t('admin_new_password') ?>" required <?= $setupLocal ? 'autofocus' : '' ?>>
                 <button type="submit"><?= t('btn_set_password') ?></button>
             </form>
+            <?php else: ?>
+            <div class="error"><?= $setupState === 'weak' ? t('device_token_weak', MIKANBOX_SETUP_TOKEN_MIN_LENGTH) : t('flat_token_missing') ?></div>
+            <?php endif; ?>
         <?php else: ?>
             <?php if ($isDemoMode): ?>
             <p><?= t('hint_demo_login') ?></p>
@@ -646,7 +673,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                     $passwordSaveFailed = true;
                     goto skip_post_actions;
                 }
-                if (strlen($_POST['new_password']) < 4) {
+                if (strlen($_POST['new_password']) < 7) {
                     $message = t('err_password_chars');
                     $passwordSaveFailed = true;
                     goto skip_post_actions;
