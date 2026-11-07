@@ -77,6 +77,8 @@ A third edition, **🍊mikanBox Cloud** (under development), runs on Cloudflare 
 
 ## Requirements
 
+For the PHP editions, the minimum version describes compatibility. Use the latest patched, supported PHP 8.4 or 8.5 for new installations and Internet-facing sites.
+
 - A web server with PHP 8.0 or later (no database required)
 - Locally, you don't even need a server: just open the folder containing 🍊mikanBox flat with an AI coding tool like Claude Code, and the AI can build the site and manage content directly. Export as static files and upload via FTP.
 

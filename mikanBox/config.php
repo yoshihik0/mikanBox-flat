@@ -2,7 +2,7 @@
 // ==========================================
 // mikanBox Basic Settings
 // ==========================================
-define('MIKANBOX_VERSION', '2.16.5');
+define('MIKANBOX_VERSION', '2.16.6');
 if (!defined('CORE_DIR')) define('CORE_DIR', __DIR__);
 
 // Site-specific options survive self-updates because local-config.php is not
@@ -87,7 +87,12 @@ if (file_exists(SETTINGS_FILE)) {
 define('SITE_NAME', $GLOBALS['mikanbox_settings']['site_name'] ?? 'mikanBox');
 
 // Reset/new installations must never inherit authenticated access.
-if (empty($GLOBALS['mikanbox_settings']['password_hash'])) mikanBoxClearAuthentication();
+$currentPasswordHash = (string)($GLOBALS['mikanbox_settings']['password_hash'] ?? '');
+$GLOBALS['mikanbox_initial_password_hash'] = $currentPasswordHash;
+if ($currentPasswordHash === '' || (($_SESSION['admin_logged_in'] ?? false) === true
+    && !hash_equals(hash('sha256', $currentPasswordHash), (string)($_SESSION['mikanbox_password_fingerprint'] ?? '')))) {
+    mikanBoxClearAuthentication();
+}
 
 // CSRF token generation and verification
 function generateCsrfToken() {

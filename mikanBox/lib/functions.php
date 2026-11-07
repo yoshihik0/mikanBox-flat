@@ -122,7 +122,22 @@ function loadSettings() {
  */
 function mikanBoxStorageSaveSettings($settings) {
     $settingsFile = SETTINGS_FILE;
-    return file_put_contents($settingsFile, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+    $lock = fopen(DATA_DIR . '/settings-lock.php', 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) return false;
+    try {
+        $current = loadSettings();
+        $expected = $GLOBALS['mikanbox_initial_password_hash'] ?? (string)($current['password_hash'] ?? '');
+        if (!hash_equals((string)($current['password_hash'] ?? ''), $expected)) return false;
+        if (!empty($settings['demo_mode'])) $settings['mcp_api_key'] = '';
+        $json = json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        if ($json === false) return false;
+        $tmp = tempnam(DATA_DIR, '.settings-');
+        if ($tmp === false) return false;
+        $ok = file_put_contents($tmp, $json) !== false && rename($tmp, $settingsFile);
+        if (is_file($tmp)) unlink($tmp);
+        if ($ok) $GLOBALS['mikanbox_initial_password_hash'] = (string)($settings['password_hash'] ?? '');
+        return $ok;
+    } finally { flock($lock, LOCK_UN); fclose($lock); }
 }
 
 /**
@@ -168,3 +183,11 @@ function bootstrapFreshInstallFromImport() {
 }
 bootstrapFreshInstallFromImport();
 
+
+// A demo must not retain a credential that could become live when the demo is disabled.
+$demoSettings = loadSettings();
+if (!empty($demoSettings['demo_mode']) && !empty($demoSettings['mcp_api_key'])) {
+    $demoSettings['mcp_api_key'] = '';
+    if (!saveSettings($demoSettings)) throw new RuntimeException('Cannot disable demo credentials.');
+}
+unset($demoSettings);

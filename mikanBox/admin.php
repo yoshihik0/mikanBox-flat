@@ -56,11 +56,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                     'system_lang' => '',
                     'ssg_structure' => 'directory',
                     'ssg_server_structure' => 'directory',
-                    'ssg_export_structure' => 'file'
+                    'ssg_export_structure' => 'file',
+                            'external_markdown_enabled' => false
                 ];
             }
             $settings['password_hash'] = password_hash($pass, PASSWORD_DEFAULT);
-            if (file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT))) {
+            if (saveSettings($settings)) {
                 // 初回セットアップ時に .htaccess が未生成であれば自動作成
                 $siteRoot = dirname(CORE_DIR);
                 $htaccessPath = $siteRoot . '/.htaccess';
@@ -70,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                 }
                 mikanBoxRenewAuthentication();
                 $_SESSION['admin_logged_in'] = true;
+            $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
                 header('Location: ' . basename(__FILE__));
                 exit;
             } else {
@@ -86,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             clearLoginAttempts($rateLimitId);
             mikanBoxRenewAuthentication();
             $_SESSION['admin_logged_in'] = true;
+            $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
             header('Location: ' . basename(__FILE__));
             exit;
         } else {
@@ -258,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     }
 
     // Demo mode: block write operations if not logged in with password
-    if ($isDemoMode && !$isLoggedIn) {
+    if ($isDemoMode && (!$isLoggedIn || in_array($_POST['save_action'], ['generate_mcp_key', 'set_mcp_enabled'], true))) {
         $message = t('msg_demo_mode');
         goto skip_post_actions;
     }
@@ -686,6 +689,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             if (isset($_POST['pages_per_page'])) $settings['pages_per_page'] = (int)$_POST['pages_per_page'];
             if (isset($_POST['media_per_page'])) $settings['media_per_page'] = (int)$_POST['media_per_page'];
             if (isset($_POST['category_candidates'])) $settings['category_candidates'] = $_POST['category_candidates'];
+            if (isset($_POST['external_markdown_present'])) $settings['external_markdown_enabled'] = isset($_POST['external_markdown_enabled']);
 
             // Current password and minimum length were checked before changing settings.
             if (!empty($_POST['new_password'])) {
@@ -695,7 +699,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             $settings['memo'] = $_POST['memo'] ?? '';
         }
         
-        if (file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT))) {
+        if (saveSettings($settings)) {
+            $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
             $message = t('msg_update_success');
         } else {
             $message = t('err_save_failed');
@@ -712,7 +717,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             if (!in_array($newCat, $candidates)) {
                 $candidates[] = $newCat;
                 $settings['category_candidates'] = implode(', ', $candidates);
-                $saved = file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+                $saved = saveSettings($settings) !== false;
                 if ($saved) {
                     $message = sprintf(t('msg_category_added'), $newCat);
                     $success = true;
@@ -769,7 +774,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                 $candidates = array_filter(array_map('trim', explode(',', $settings['category_candidates'] ?? '')));
                 $newCandidates = array_diff($candidates, [$delCat]);
                 $settings['category_candidates'] = implode(', ', $newCandidates);
-                $savedSettings = file_put_contents(SETTINGS_FILE, json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) !== false;
+                $savedSettings = saveSettings($settings) !== false;
                 
                 $updatedPages = 0;
                 foreach ($allPageIds as $pid) {
