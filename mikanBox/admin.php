@@ -293,6 +293,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         goto skip_post_actions;
     }
 
+    // The public demo is never updated or restored, not even by a signed-in administrator.
+    if ($isDemoMode && in_array($_POST['save_action'], ['system_update', 'system_restore'], true)) {
+        $_SESSION['admin_message'] = t('msg_demo_no_update');
+        header('Location: admin.php?view=settings', true, 303);
+        exit;
+    }
+
     if (in_array($_POST['save_action'], ['system_update', 'system_restore'], true)) {
         require_once __DIR__ . '/lib/updater.php';
         try {
