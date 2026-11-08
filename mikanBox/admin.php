@@ -76,8 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                 $htaccessPath = $siteRoot . '/.htaccess';
                 if (!file_exists($htaccessPath)) {
                     $htaccessContent = "DirectoryIndex index.php\n\n<IfModule mod_rewrite.c>\n    RewriteEngine On\n    RewriteCond %{REQUEST_FILENAME} -f [OR]\n    RewriteCond %{REQUEST_FILENAME} -d\n    RewriteRule ^ - [L]\n    RewriteRule ^ index.php [L,QSA]\n</IfModule>\n";
-                    @file_put_contents($htaccessPath, $htaccessContent);
+                    @file_put_contents($htaccessPath, $htaccessContent . "\n" . mikanBoxHtaccessCharsetBlock());
                 }
+                mikanBoxEnsureSiteHtaccessCharset($siteRoot); // static .md/.txt/.csv as UTF-8 (appended once, existing lines kept)
                 if ($setupNeedsToken) mikanBoxSetupTokenReset();
                 clearLoginAttempts($setupRateId);
                 mikanBoxRenewAuthentication();
@@ -221,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                 );
                 $message = !empty($result['success'])
                     ? t('msg_system_update_success', $result['version'])
+                        . (($result['htaccess'] ?? '') === 'failed' ? ' ' . t('msg_htaccess_charset_manual') : '')
                     : t('update_error_' . ($result['code'] ?? 'internal'));
             } else {
                 $result = mikanBoxRestorePreviousVersion(CORE_DIR, DATA_DIR);
@@ -295,7 +297,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         } elseif (($formatError = mikanBoxValidatePageSave($id, (string)($oldId ?? ''), [
             'category' => trim($_POST['category'] ?? ''),
             'output_format' => (string)($_POST['output_format'] ?? 'html'),
-            'status' => $status,
         ], $settings)) !== null) {
             $message = $formatError;
         } else {
@@ -335,6 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             'md_footer_comps' => (string)($_POST['md_footer_comps'] ?? ''),
             'expand_tags' => isset($_POST['expand_tags_present']) ? isset($_POST['expand_tags']) : null,
         ], $existingPageData ?: null);
+        $data = mikanBoxNormalizeLegacyPage($data); // a "db" status from an old form means output format "mikanBox DB"
         $oldFormat = mikanBoxPageOutputFormat($existingPageData);
         if (saveData(POSTS_DIR, $id, $data)) {
             // Delete old file if URL slug (ID) has changed
@@ -389,13 +391,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $id = $_POST['id'];
         $newStatus = $_POST['status'];
         $data = loadData(POSTS_DIR, $id);
-        if ($data && $newStatus === 'db' && mikanBoxIsDataFormat(mikanBoxPageOutputFormat($data))) {
-            $_SESSION['admin_message'] = t('err_output_format_db');
-            header("Location: admin.php?view=pages#pages");
-            exit;
-        }
         if ($data) {
             $data['status'] = $newStatus;
+            $data = mikanBoxNormalizeLegacyPage($data);
             saveData(POSTS_DIR, $id, $data);
             
             // Sync SSG if needed
@@ -973,12 +971,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $id = $_POST['id'];
         $status = $_POST['status'];
         $data = loadData(POSTS_DIR, $id);
-        if ($data && $status === 'db' && mikanBoxIsDataFormat(mikanBoxPageOutputFormat($data))) {
-            $message = t('err_output_format_db');
-            $data = null;
-        }
         if ($data) {
             $data['status'] = $status;
+            $data = mikanBoxNormalizeLegacyPage($data);
             if (saveData(POSTS_DIR, $id, $data)) {
                 require_once __DIR__ . '/lib/ssg.php';
                 $ssgOpts = [

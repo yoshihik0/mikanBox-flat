@@ -86,6 +86,12 @@ function mikanBoxStorageSaveData($dir, $id, $data) {
  * @return array|null The data as an associative array, or null on failure
  */
 function loadData($dir, $id) {
+    $data = mikanBoxLoadDataRaw($dir, $id);
+    // Pages saved before 2.18.0 with the "db" status read as output format "mikanBox DB".
+    return $dir === POSTS_DIR ? mikanBoxNormalizeLegacyPage($data) : $data;
+}
+
+function mikanBoxLoadDataRaw($dir, $id) {
     $filePath = resolveSafeDataPath($dir, $id, '.json');
     if ($filePath === false || !file_exists($filePath)) {
         // ディレクトリ型ページ: coffee → coffee/index.json
