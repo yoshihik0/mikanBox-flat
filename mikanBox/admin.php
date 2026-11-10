@@ -1987,16 +1987,15 @@ function getIcon($name) {
                     const shift = editor.getBoundingClientRect().top - before;
                     if (shift) window.scrollBy({ top: shift, behavior: 'instant' });
                 }
-                // Fold the editor first: the row's final position is only known once the editor's
-                // height is gone, and a scroll started toward the old position gets cancelled by the
-                // layout shrinking. Then scroll to the measured row.
-                if (editor) await MikanUI.collapse(editor);
+                // One motion: first bring the top of the editor (= the top of the list) into view,
+                // so the shrinking is seen from its top edge rather than from far below it; then
+                // fold the editor (shorter than opening it) and the list slides up under it.
+                const sectionTop = () => ({ el: document.getElementById(sectionId), block: 'start' });
+                await settleScroll(sectionTop);
+                if (editor) await MikanUI.collapse(editor, 260);
                 const slot0 = document.getElementById(slotId);
                 if (slot0) slot0.innerHTML = '';
-                await settleScroll(() => {
-                    const row = editedRow();
-                    return row ? { el: row, block: 'center' } : { el: document.getElementById(sectionId), block: 'start' };
-                });
+                { const t = sectionTop().el; if (t && Math.abs(t.getBoundingClientRect().top) > 40) scrollToElement(t, 'start', 'instant'); }
             } finally {
                 const slot = document.getElementById(slotId);
                 if (slot) slot.innerHTML = '';
