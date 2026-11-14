@@ -20,6 +20,22 @@ if (empty($_SESSION['csrf_token'])) {
 // --- Authentication ---
 $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
 
+// Same-origin session probe (see admin-ui.js): is this browser still signed in, and which CSRF
+// token is current? A form left open past the sign-in's lifetime asks before it submits, so
+// what was typed is never lost to a login screen or a stale token. No CORS headers are sent,
+// so only this site's own pages can read the answer.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'session_check') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('X-Content-Type-Options: nosniff');
+    echo json_encode($isLoggedIn
+        ? ['logged_in' => true, 'csrf_token' => (string)$_SESSION['csrf_token']]
+        : ['logged_in' => false]);
+    exit;
+}
+
 // Initial setup / Login / Common settings
 // If settings.json does not exist, initialize with an empty array
 $settings = file_exists(SETTINGS_FILE) ? json_decode(file_get_contents(SETTINGS_FILE), true) : [];
@@ -108,6 +124,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             $loginError = t('err_wrong_password');
         }
     }
+}
+
+// An ajax action from a browser that is no longer signed in gets JSON (401), never the login page.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_request']) && (empty($passwordHash) || !$isLoggedIn)) {
+    if (ob_get_length()) ob_clean();
+    http_response_code(401);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode(['success' => false, 'message' => t('err_session_expired'), 'session_expired' => true], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // Show login screen if not logged in
@@ -204,6 +230,13 @@ unset($_SESSION['admin_message']);
 // --- Save / Action Processing (with CSRF verification) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        if (isset($_POST['ajax_request'])) {
+            if (ob_get_length()) ob_clean();
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => t('err_csrf')], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         die(t('err_csrf'));
     }
 
@@ -937,6 +970,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                         $filePath = $file->getRealPath();
                         $relativePath = $mode . '/' . substr($filePath, strlen($sourceDir) + 1);
                         if ($mode === 'data' && strpos(basename($filePath), 'backup_') === 0) continue; 
+                        if ($mode === 'data' && strpos($relativePath, 'data/sessions/') === 0) continue;   // live sign-ins never go into a backup
                         if ($mode === 'data' && strpos($relativePath, 'data/visual-history/') === 0) continue;   // ビジュアル編集の履歴は、バックアップに含めない
                         $zip->addFile($filePath, $relativePath);
                     }
@@ -1279,7 +1313,7 @@ function getIcon($name) {
 
 
 
-    <script>window.__MIKAN_UI = <?= json_encode(['confirmTitle' => t('btn_delete'), 'confirmOk' => t('btn_delete_confirm'), 'cancel' => t('btn_cancel'), 'saveFailed' => t('err_save_failed'), 'done' => t('msg_update_success'), 'networkError' => t('err_network_error')], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
+    <script>window.__MIKAN_UI = <?= json_encode(['confirmTitle' => t('btn_delete'), 'confirmOk' => t('btn_delete_confirm'), 'cancel' => t('btn_cancel'), 'saveFailed' => t('err_save_failed'), 'done' => t('msg_update_success'), 'networkError' => t('err_network_error'), 'sessionExpired' => t('err_session_expired')], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
     <?= mikanBoxInlineAdminScript('admin-ui.js') ?>    <script>
     // ブラウザのスクロール復元を無効にして競合させない
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -2251,6 +2285,7 @@ function getIcon($name) {
                     const res = await fetch(window.location.href, { method: 'POST', body: formData });
                     if (res.ok) {
                         const json = await res.json().catch(()=>({}));
+                        if (json.success === false) { showToast(json.message || <?= json_encode(t('err_save_failed')) ?>, true); return; }
                         window.isDirty = false;
                         showToast(json.message || '<?= t('msg_update_success') ?? '保存しました' ?>');
                         if (action === 'generate_mcp_key' && json.mcp_api_key) {
@@ -2287,7 +2322,9 @@ function getIcon($name) {
                             refreshCompList();
                         }
                     } else {
-                        showToast('<?= t('err_save_failed') ?>', true);
+                        // 401 (signed out) and 403 (stale token) come back as JSON with their own message.
+                        const failure = await res.json().catch(()=>({}));
+                        showToast(failure.message || '<?= t('err_save_failed') ?>', true);
                     }
                 } catch(err) {
                     showToast('<?= t('err_network_error') ?>', true);
