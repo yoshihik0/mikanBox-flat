@@ -12,8 +12,9 @@ define('MIKANBOX', true);
 require_once __DIR__ . '/lib/updater.php';
 $installedVersion = mikanBoxUpdateReadVersion(CORE_DIR . '/config.php') ?: MIKANBOX_VERSION;
 
-// CSRF token generation (initial or on session timeout)
-if (empty($_SESSION['csrf_token'])) {
+// CSRF token generation (initial or on session timeout). Without a session (nobody signed in yet)
+// there is nothing to keep it in: the sign-in screens use stateless tokens instead.
+if (session_status() === PHP_SESSION_ACTIVE && empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
@@ -47,7 +48,7 @@ $loginError = ''; // Initialize loginError
 // Logout process
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     mikanBoxClearAuthentication();
-    mikanBoxRenewAuthentication();
+    if (session_status() === PHP_SESSION_ACTIVE) mikanBoxRenewAuthentication();
     header('Location: ' . basename($_SERVER['PHP_SELF']));
     exit;
 }
@@ -61,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
         $setupLocked = checkLoginRateLimit($setupRateId);
         // On this computer itself no token is needed; on a server the token proves ownership.
         $setupNeedsToken = !mikanBoxIsLocalRequest();
-        if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        if (!mikanBoxPreAuthCsrfVerify($_POST['csrf_token'] ?? '')) {
             $loginError = t('err_csrf');
         } elseif ($setupLocked > 0) {
             $loginError = t('err_rate_limited', (int)ceil($setupLocked / 60));
@@ -97,6 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                 mikanBoxEnsureSiteHtaccessCharset($siteRoot); // static .md/.txt/.csv as UTF-8 (appended once, existing lines kept)
                 if ($setupNeedsToken) mikanBoxSetupTokenReset();
                 clearLoginAttempts($setupRateId);
+                if (!mikanBoxEnsureSession()) throw new RuntimeException('Unable to start mikanBox session');   // the first session file is created here
                 mikanBoxRenewAuthentication();
                 $_SESSION['admin_logged_in'] = true;
             $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
@@ -114,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             $loginError = t('err_rate_limited', (int)ceil($lockedRemain / 60));
         } elseif (password_verify($_POST['password'] ?? '', $passwordHash)) {
             clearLoginAttempts($rateLimitId);
+            if (!mikanBoxEnsureSession()) throw new RuntimeException('Unable to start mikanBox session');   // the first session file is created here
             mikanBoxRenewAuthentication();
             $_SESSION['admin_logged_in'] = true;
             $_SESSION['mikanbox_password_fingerprint'] = hash('sha256', $settings['password_hash']);
@@ -162,7 +165,7 @@ if (empty($passwordHash) || !$isLoggedIn) {
             <?php if ($setupState === 'ready'): ?>
             <p><?= $setupLocal ? t('hint_setup_msg') : t('hint_setup_msg_token') ?></p>
             <form method="post">
-                <?= csrfField() ?>
+                <?= mikanBoxPreAuthCsrfField() ?>
                 <?php require __DIR__ . '/views/site-sections/password-account.php'; ?>
                 <input type="hidden" name="login_action" value="set_initial_password">
                 <?php if (!$setupLocal): ?>
@@ -971,6 +974,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                         $relativePath = $mode . '/' . substr($filePath, strlen($sourceDir) + 1);
                         if ($mode === 'data' && strpos(basename($filePath), 'backup_') === 0) continue; 
                         if ($mode === 'data' && strpos($relativePath, 'data/sessions/') === 0) continue;   // live sign-ins never go into a backup
+                        if ($mode === 'data' && $relativePath === 'data/security/csrf-secret.php') continue;   // the sign-in form signing key stays on this server
                         if ($mode === 'data' && strpos($relativePath, 'data/visual-history/') === 0) continue;   // ビジュアル編集の履歴は、バックアップに含めない
                         $zip->addFile($filePath, $relativePath);
                     }
@@ -1740,11 +1744,15 @@ function getIcon($name) {
         });
     }
     async function changePageStatus(id, newStatus) {
+        // Same path as every other save: still signed in? (shows the expired message if not) and the
+        // current token, which the page keeps in its forms. Never a value baked in at page load.
+        if (!(await MikanUI.ensureSession())) return;
+        const tokenInput = document.querySelector('input[name="csrf_token"]');
         const formData = new FormData();
         formData.append('save_action', 'save_page_status');
         formData.append('id', id);
         formData.append('status', newStatus);
-        formData.append('csrf_token', '<?= $_SESSION['csrf_token'] ?? '' ?>');
+        formData.append('csrf_token', tokenInput ? tokenInput.value : '');
         formData.append('ajax_request', '1');
         try {
             const res = await fetch(window.location.href, { method: 'POST', body: formData });
@@ -1868,8 +1876,6 @@ function getIcon($name) {
     // ==========================================
     // SPA Editor Open / Close
     // ==========================================
-    const csrfToken = '<?= $_SESSION['csrf_token'] ?? '' ?>';
-
     function createNavEditButton(type) {
         // type: 'page' or 'design'
         const hash = type === 'page' ? '#page-editor' : '#design-editor';
