@@ -40,7 +40,13 @@ function mikanBoxSetupTokenEnsureFolder(): void {
 function mikanBoxSetupToken(): string {
     $file = mikanBoxSetupTokenFile();
     if (!is_file($file) || !is_readable($file)) return '';
-    foreach (preg_split('/\r\n|\n|\r/', (string)file_get_contents($file)) ?: [] as $line) {
+    $content = (string)file_get_contents($file);
+    // A file the owner writes by hand is plain text. One that starts with a UTF-8 BOM (as files
+    // written by the static site generator do) or holds other control characters is not used:
+    // the token must never come from a path the web side can write.
+    if (strncmp($content, "\xEF\xBB\xBF", 3) === 0 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $content)) return '';
+    // Not \R: without the /u flag it also splits on the byte 0x85, which sits inside many Japanese characters.
+    foreach (preg_split('/\r\n|\n|\r/', $content) ?: [] as $line) {
         $line = trim($line);
         if ($line !== '' && $line[0] !== '#') return $line;
     }
