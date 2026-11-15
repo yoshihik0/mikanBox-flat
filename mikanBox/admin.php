@@ -11,6 +11,8 @@ if (is_file(__DIR__ . '/lib/visual-history.php')) require_once __DIR__ . '/lib/v
 define('MIKANBOX', true);
 // Signing in over plain HTTP is avoided: GET/HEAD go to the same address on https:// (see security.php).
 mikanBoxRedirectToHttpsIfNeeded();
+mikanBoxSendAdminHeaders();   // framing, sniffing and Referer rules for every admin screen (security.php)
+ini_set('display_errors', '0');   // errors go to the server log, never into a page with server paths
 require_once __DIR__ . '/lib/updater.php';
 $installedVersion = mikanBoxUpdateReadVersion(CORE_DIR . '/config.php') ?: MIKANBOX_VERSION;
 
@@ -47,16 +49,25 @@ $GLOBALS['mikanbox_settings'] = &$settings;
 $passwordHash = $settings['password_hash'] ?? '';
 $loginError = ''; // Initialize loginError
 
-// Logout process
-if (isset($_GET['action']) && $_GET['action'] === 'logout') {
-    mikanBoxClearAuthentication();
-    if (session_status() === PHP_SESSION_ACTIVE) mikanBoxRenewAuthentication();
-    header('Location: ' . basename($_SERVER['PHP_SELF']));
+// Logout: a POST from the admin screen's own form with its CSRF token, so another site cannot sign
+// the admin out. The redirect always goes to this file by its fixed name (never PATH_INFO).
+// An old ?action=logout link only returns to the admin screen.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['logout_action'] ?? '') === '1') {
+    if (session_status() === PHP_SESSION_ACTIVE && is_string($_POST['csrf_token'] ?? null) && verifyCsrfToken($_POST['csrf_token'])) {
+        mikanBoxClearAuthentication();
+        mikanBoxRenewAuthentication();
+    }
+    header('Location: ' . basename(__FILE__));
+    exit;
+}
+if (($_GET['action'] ?? '') === 'logout') {
+    header('Location: ' . basename(__FILE__));
     exit;
 }
 
 // --- Login / Initial Setup Process ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
+    mikanBoxScalarPost();
     if ($_POST['login_action'] === 'set_initial_password' && empty($passwordHash)) {
         // Initial password setup
         $pass = $_POST['new_password'] ?? '';
@@ -68,6 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
             $loginError = t('err_csrf');
         } elseif ($setupLocked > 0) {
             $loginError = t('err_rate_limited', (int)ceil($setupLocked / 60));
+        } elseif ($setupNeedsToken && ($setupWait = mikanBoxLoginAttemptStart($setupRateId)) > 0) {
+            $loginError = t('err_rate_limited', (int)ceil($setupWait / 60));   // counted before the token is checked
         } elseif ($setupNeedsToken && !mikanBoxSetupTokenMatches($_POST['setup_token'] ?? '')) {
             recordLoginFailure($setupRateId);
             $loginError = t('err_setup_token_invalid');
@@ -89,7 +102,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
                 ];
             }
             $settings['password_hash'] = password_hash($pass, PASSWORD_DEFAULT);
+            // Setting the password again after password_hash was emptied (recovery, hand-over) also
+            // retires the MCP key, as recovery does in the SQLite edition. A fresh install has none.
+            $mcpKeyRetired = !empty($settings['mcp_api_key']);
+            if ($mcpKeyRetired) $settings['mcp_api_key'] = '';
             if (saveSettings($settings)) {
+                if ($mcpKeyRetired) mikanBoxAudit('recovery');
                 // 初回セットアップ時に .htaccess が未生成であれば自動作成
                 $siteRoot = dirname(CORE_DIR);
                 $htaccessPath = $siteRoot . '/.htaccess';
@@ -116,6 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_action'])) {
         $lockedRemain = checkLoginRateLimit($rateLimitId);
         if ($lockedRemain > 0) {
             $loginError = t('err_rate_limited', (int)ceil($lockedRemain / 60));
+        } elseif (($loginWait = mikanBoxLoginAttemptStart($rateLimitId)) > 0) {
+            $loginError = t('err_rate_limited', (int)ceil($loginWait / 60));   // counted before the password is checked
         } elseif (password_verify($_POST['password'] ?? '', $passwordHash)) {
             clearLoginAttempts($rateLimitId);
             if (!mikanBoxEnsureSession()) throw new RuntimeException('Unable to start mikanBox session');   // the first session file is created here
@@ -200,6 +220,12 @@ if (empty($passwordHash) || !$isLoggedIn) {
 
 // ==========================================
 // Post-login Processing (Routing & Data Saving)
+// Right after a system update the admin screen reloads with update_checked. The update itself was
+// run by the previous version's updater, so the new version tidies the old tests/ folder here.
+if (isset($_GET['update_checked'])) {
+    require_once __DIR__ . '/lib/updater.php';
+    mikanBoxUpdateRemoveRetiredTests(dirname(CORE_DIR));
+}
 // ==========================================
 // Logged in: Load common data
 // $settings is already loaded above
@@ -952,7 +978,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         } else {
             $zip = new ZipArchive();
             $zipFile = DATA_DIR . "/backup_{$mode}_" . date('YmdHis') . '.zip';
-            if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE)) {
+            if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
                 $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourceDir), RecursiveIteratorIterator::LEAVES_ONLY);
                 foreach ($files as $file) {
                     if (!$file->isDir()) {
@@ -962,6 +988,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
                         if ($mode === 'data' && strpos($relativePath, 'data/sessions/') === 0) continue;   // live sign-ins never go into a backup
                         if ($mode === 'data' && $relativePath === 'data/security/csrf-secret.php') continue;   // the sign-in form signing key stays on this server
                         if ($mode === 'data' && strpos($relativePath, 'data/visual-history/') === 0) continue;   // ビジュアル編集の履歴は、バックアップに含めない
+                        if ($mode === 'data' && $relativePath === 'data/settings.json') {
+                            // The MCP API key never leaves the server in a backup (2.21.3): issue a new one after restoring.
+                            $backupSettings = json_decode((string)file_get_contents($filePath), true);
+                            if (is_array($backupSettings)) {
+                                if (array_key_exists('mcp_api_key', $backupSettings)) $backupSettings['mcp_api_key'] = '';
+                                $zip->addFromString($relativePath, json_encode($backupSettings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                                continue;
+                            }
+                        }
                         $zip->addFile($filePath, $relativePath);
                     }
                 }
@@ -1233,8 +1268,10 @@ function getIcon($name) {
          ============================================== -->
     <div class="page-top-links">
         <a href="<?= $lastSsgRelPath ?>" target="_blank"><?= t('admin_view_site') ?></a>
-        <a href="?action=logout"><?= t('admin_logout') ?></a>
+        <?php if (getenv('MIKANBOX_DESKTOP_READY') === false): ?><form method="post" action="<?= htmlspecialchars(basename(__FILE__), ENT_QUOTES, 'UTF-8') ?>" style="display:inline;margin:0;"><input type="hidden" name="logout_action" value="1"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)($_SESSION['csrf_token'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><button type="submit" class="link-button"><?= t('admin_logout') ?></button></form><?php endif; ?>
     </div>
+    <?php if (mikanBoxCliServerWithoutRouter()): ?><p class="admin-alert" role="alert"><?= htmlspecialchars(t('warn_cli_server_no_router'), ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
+    <?php if (($mbDataProbe = mikanBoxDataProtectionProbe()) !== null): ?><p class="admin-alert" id="data-protection-alert" role="alert" hidden data-probe="<?= htmlspecialchars($mbDataProbe, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(t('warn_data_dir_readable'), ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
     
     <!-- Category Cloud -->
     <?php

@@ -81,6 +81,8 @@ A third edition, **🍊mikanBox Cloud** (under development), runs on Cloudflare 
 For the PHP editions, the minimum version describes compatibility. Use the latest patched, supported PHP 8.4 or 8.5 for new installations and Internet-facing sites.
 
 - A web server with PHP 8.0 or later (no database required)
+- A server where `.htaccess` works (Apache; it keeps the data folder and similar files from being opened in a browser)
+- A server with HTTPS (not needed for a local `php -S` / `localhost`)
 - Locally, you don't even need a server: just open the folder containing 🍊mikanBox flat with an AI coding tool like Claude Code, and the AI can build the site and manage content directly. Export as static files and upload via FTP.
 
 ---
@@ -103,7 +105,7 @@ You can run it on your own machine instead of a server. PHP is the only requirem
 ```bash
 php -v                      # 8.0 or later (on macOS: brew install php)
 cd /path/to/mikanbox        # the folder containing index.php
-php -S localhost:8000
+php -S localhost:8000 index.php   # keep the final index.php (without it the data folder can be read from a browser)
 ```
 
 Open `http://localhost:8000/mikanBox/admin.php`, set a password (at least 7 characters), and you are done. No token is needed locally. `mikanData` and `media` are created for you.
@@ -249,6 +251,8 @@ Then simply submit that feed to Apple Podcasts, Spotify, Amazon Music, or other 
 - **Running locally and uploading static files leaves nothing to attack.** No PHP, no JSON, and no admin panel are published; the site is generated files, and the originals stay on your machine
 - Renaming the admin directory makes the URL harder to guess
 - `.htaccess` restricts direct access to management files
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ---
 

@@ -71,6 +71,8 @@
 PHP版の最低動作要件は互換性の目安です。新規導入・インターネット公開では、サポート中のPHP 8.4／8.5の最新修正版を使用してください。
 
 - PHP 8.0以上が使えるWebサーバー（データベース不要）
+- `.htaccess` が有効なサーバー（Apache。データフォルダなどをブラウザから開けなくするために使います）
+- HTTPS が使えるサーバー（ローカルの `php -S`／`localhost` は除く）
 - ローカルで、🍊mikanBox flatをおいたフォルダをClaude CodeなどのAIで開くだけでも、AIによるサイトの構築・コンテンツ管理が可能です。（静的ファイルで書き出し、FTPでサーバーにアップ）
 
 ---
@@ -93,7 +95,7 @@ PHP版の最低動作要件は互換性の目安です。新規導入・イン�
 ```bash
 php -v                      # 8.0 以上であることを確認（無ければ macOS は brew install php）
 cd /path/to/mikanbox        # index.php があるフォルダ
-php -S localhost:8000
+php -S localhost:8000 index.php   # 最後の index.php を省かない（省くとデータフォルダがブラウザから読めます）
 ```
 
 `http://localhost:8000/mikanBox/admin.php` を開いてパスワード（7文字以上）を設定すれば完了です。ローカルではトークンは不要です。`mikanData` と `media` は自動生成されます。
@@ -237,6 +239,8 @@ https://yoursite.com/podcast.xml
 - ローカルで運用して静的ファイルをアップロードするとPHPファイルやJSONをパブリックディレクトリに置かずに済み、改ざんリスクを最小化
 - 管理画面のディレクトリ名を変更することでURLを推測されにくくできる
 - `.htaccess` による管理ファイルへの直接アクセス制限
+
+脆弱性の報告方法は [SECURITY.md](SECURITY.md) を参照してください。
 
 ---
 
