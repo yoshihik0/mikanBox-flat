@@ -2468,7 +2468,9 @@ function getIcon($name) {
             return;
         }
 
-        const deleteBadge = e.target.closest('.category-delete-badge');
+        // In delete mode the whole category deletes it, not only its small × mark.
+        const deleteBadge = e.target.closest('.category-delete-badge')
+            || e.target.closest('.category-cloud-wrap.delete-mode .category-cloud-tag-wrap')?.querySelector('.category-delete-badge');
         if (deleteBadge) {
             e.preventDefault();
             const val = deleteBadge.getAttribute('data-category');
@@ -2618,6 +2620,7 @@ function getIcon($name) {
     document.addEventListener('click', async function(e) {
         const tag = e.target.closest('.category-cloud-tag');
         if (!tag) return;
+        if (tag.closest('.category-cloud-wrap.delete-mode') && tag.closest('.category-cloud-tag-wrap')) { e.preventDefault(); return; }
         if (tag.classList.contains('btn-add-cat') || tag.classList.contains('btn-toggle-del-cat')) return;
 
         e.preventDefault();
