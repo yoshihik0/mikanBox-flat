@@ -938,6 +938,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         if (!empty($errors)) $message .= ' / ' . implode(', ', $errors);
         if (empty($results)) $message .= t('msg_html_pages_none');
         
+        // What this build covered, for the state shown beside the build button.
+        if (empty($errors)) $settings['last_build'] = mikanBoxBuildRecord();
         $saved = saveSettings($settings);
         if (!$saved) {
             $message .= ' / ' . t('err_save_failed');
@@ -1627,6 +1629,12 @@ function getIcon($name) {
             
             if (action === 'delete_media') {
                 const confirmed = await window.showConfirmDialog('<?= t('hint_confirm_delete') ?>', '<?= t('btn_delete') ?>', '<?= t('btn_delete_confirm') ?>', 'btn-red');
+                if (!confirmed) return;
+            }
+            if (action === 'convert_media_webp') {
+                // The file name and the links that use it change, so ask first (as in Cloud).
+                const fileName = form.querySelector('input[name="filename"]')?.value || '';
+                const confirmed = await window.showConfirmDialog(<?= json_encode(t('confirm_media_webp')) ?>.replace('%s', fileName), <?= json_encode(t('btn_convert_webp')) ?>, <?= json_encode(t('btn_convert_webp')) ?>, 'btn-blue');
                 if (!confirmed) return;
             }
             const formData = new FormData(form);
