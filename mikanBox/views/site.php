@@ -106,14 +106,13 @@
             <details class="section-accordion">
                 <summary class="header section-header accordion-summary">
                     <h2 class="accordion-title">
-                        <?= t('backup_head_flat') ?> <span class="accordion-arrow">▼</span>
+                        <?= t('backup_head') ?> <span class="accordion-arrow">▼</span>
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro"><?= t('backup_hint_flat') ?></small>
+                    <small class="sub-text sub-text-intro"><?= t('backup_hint') ?></small>
                     <div class="flex-row gap-10">
-                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_data"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_data_json') ?></button></form>
-                        <form method="post"><?= csrfField() ?><input type="hidden" name="save_action" value="download_backup_media"><button type="submit" class="btn btn-gray btn-small"><?= getIcon('download') ?> <?= t('backup_media_flat') ?></button></form>
+                        <a href="admin.php?view=import" class="btn btn-orange btn-small" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"><?= getIcon('settings_backup_restore') ?> <?= t('btn_data_tool') ?></a>
                     </div>
                 </div>
             </details>

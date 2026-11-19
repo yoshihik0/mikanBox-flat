@@ -215,7 +215,9 @@ function mikanBoxStorageSaveSettings($settings) {
  * data/components. No-op once that seed content already exists.
  */
 function bootstrapFreshInstallFromImport() {
-    if (file_exists(POSTS_DIR . '/index.json')) {
+    // Only a site with no pages at all is new. A site without an index page (for example after the
+    // data tool replaced the pages with a file that has none) keeps its pages as they are.
+    if (file_exists(POSTS_DIR . '/index.json') || getFileList(POSTS_DIR)) {
         return;
     }
 

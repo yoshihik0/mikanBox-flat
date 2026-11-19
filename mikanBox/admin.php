@@ -14,7 +14,11 @@ mikanBoxRedirectToHttpsIfNeeded();
 mikanBoxSendAdminHeaders();   // framing, sniffing and Referer rules for every admin screen (security.php)
 ini_set('display_errors', '0');   // errors go to the server log, never into a page with server paths
 require_once __DIR__ . '/lib/updater.php';
+require_once __DIR__ . '/lib/data-transfer.php';
 $installedVersion = mikanBoxUpdateReadVersion(CORE_DIR . '/config.php') ?: MIKANBOX_VERSION;
+
+// Data tool (views/data-tool.php, admin.php?view=import): shown in place of the sections, with the side navigation kept.
+$dataToolHtml = ($_GET['view'] ?? '') === 'import' ? '' : null;
 
 // CSRF token generation (initial or on session timeout). Without a session (nobody signed in yet)
 // there is nothing to keep it in: the sign-in screens use stateless tokens instead.
@@ -269,6 +273,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             exit;
         }
         die(t('err_csrf'));
+    }
+
+    if (str_starts_with((string)$_POST['save_action'], 'transfer_')) {
+        if (ob_get_length()) ob_clean();
+        mikanBoxTransferHandle((string)$_POST['save_action']);
     }
 
     if (in_array($_POST['save_action'], ['system_update', 'system_restore'], true)) {
@@ -972,43 +981,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $count = $ssg->deletePage($pid);
         $message = "Static files for '$pid' deleted ($count files).";
     }
-    elseif ($_POST['save_action'] === 'download_backup_data' || $_POST['save_action'] === 'download_backup_media') {
-        $mode = $_POST['save_action'] === 'download_backup_data' ? 'data' : 'media';
-        $sourceDir = $mode === 'data' ? DATA_DIR : MEDIA_DIR;
-        if (!is_dir($sourceDir)) {
-            $message = t('error_save_failed');
-        } else {
-            $zip = new ZipArchive();
-            $zipFile = DATA_DIR . "/backup_{$mode}_" . date('YmdHis') . '.zip';
-            if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
-                $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourceDir), RecursiveIteratorIterator::LEAVES_ONLY);
-                foreach ($files as $file) {
-                    if (!$file->isDir()) {
-                        $filePath = $file->getRealPath();
-                        $relativePath = $mode . '/' . substr($filePath, strlen($sourceDir) + 1);
-                        if ($mode === 'data' && strpos(basename($filePath), 'backup_') === 0) continue; 
-                        if ($mode === 'data' && strpos($relativePath, 'data/sessions/') === 0) continue;   // live sign-ins never go into a backup
-                        if ($mode === 'data' && $relativePath === 'data/security/csrf-secret.php') continue;   // the sign-in form signing key stays on this server
-                        if ($mode === 'data' && strpos($relativePath, 'data/visual-history/') === 0) continue;   // ビジュアル編集の履歴は、バックアップに含めない
-                        if ($mode === 'data' && $relativePath === 'data/settings.json') {
-                            // The MCP API key never leaves the server in a backup (2.21.3): issue a new one after restoring.
-                            $backupSettings = json_decode((string)file_get_contents($filePath), true);
-                            if (is_array($backupSettings)) {
-                                if (array_key_exists('mcp_api_key', $backupSettings)) $backupSettings['mcp_api_key'] = '';
-                                $zip->addFromString($relativePath, json_encode($backupSettings, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-                                continue;
-                            }
-                        }
-                        $zip->addFile($filePath, $relativePath);
-                    }
-                }
-                $zip->close();
-                header('Content-Type: application/zip');
-                header('Content-Disposition: attachment; filename="' . basename(__DIR__) . '_' . $mode . '_' . date('Ymd') . '.zip"');
-                readfile($zipFile); unlink($zipFile); exit;
-            }
-        }
-    }
     elseif ($_POST['save_action'] === 'set_mcp_enabled') {
         $saved = mikanBoxMcpSetEnabled(($_POST['mcp_enabled'] ?? '') === '1');
         mikanBoxAdminDone(basename(__FILE__) . '#mcp-api-key', $saved ? t('msg_update_success') : t('err_save_failed'), [], (bool)$saved);
@@ -1230,7 +1202,7 @@ function getIcon($name) {
         <span class="text">mikanBox<br>flat</span>
     </div>
     
-    <a href="#pages" class="nav-pages" title="<?= t('nav_pages') ?>">
+    <a href="<?= $dataToolHtml !== null ? 'admin.php' : '' ?>#pages" class="nav-pages" title="<?= t('nav_pages') ?>">
         <?= getIcon('page') ?>
         <span><?= t('nav_pages') ?></span>
     </a>
@@ -1242,11 +1214,11 @@ function getIcon($name) {
         <span class="close-badge" data-url="admin.php#pages" title="<?= t('btn_close') ?>">×</span>
     </a>
     <?php endif; ?>
-    <a href="#site" class="nav-settings" title="<?= t('nav_settings') ?>">
+    <a href="<?= $dataToolHtml !== null ? 'admin.php' : '' ?>#site" class="nav-settings" title="<?= t('nav_settings') ?>">
         <?= getIcon('save') ?>
         <span><?= t('nav_settings') ?></span>
     </a>
-    <a href="#design" class="nav-design" title="<?= t('nav_design') ?>">
+    <a href="<?= $dataToolHtml !== null ? 'admin.php' : '' ?>#design" class="nav-design" title="<?= t('nav_design') ?>">
         <?= getIcon('component') ?>
         <span><?= t('nav_design') ?></span>
     </a>
@@ -1259,7 +1231,7 @@ function getIcon($name) {
     </a>
     <?php endif; ?>
 
-    <a href="#media" class="nav-media" title="<?= t('nav_media') ?>">
+    <a href="<?= $dataToolHtml !== null ? 'admin.php' : '' ?>#media" class="nav-media" title="<?= t('nav_media') ?>">
         <?= getIcon('media') ?>
         <span><?= t('nav_media') ?></span>
     </a>
@@ -1275,6 +1247,9 @@ function getIcon($name) {
     <?php if (mikanBoxCliServerWithoutRouter()): ?><p class="admin-alert" role="alert"><?= htmlspecialchars(t('warn_cli_server_no_router'), ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
     <?php if (($mbDataProbe = mikanBoxDataProtectionProbe()) !== null): ?><p class="admin-alert" id="data-protection-alert" role="alert" hidden data-probe="<?= htmlspecialchars($mbDataProbe, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(t('warn_data_dir_readable'), ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
     
+    <?php if ($dataToolHtml !== null): ?>
+    <?php require __DIR__ . '/views/data-tool.php'; ?>
+    <?php else: ?>
     <!-- Category Cloud -->
     <?php
     $allPageIds = getFileList(POSTS_DIR);
@@ -1338,6 +1313,7 @@ function getIcon($name) {
     <?php include __DIR__ . '/views/design.php'; ?>
 
     <?php include __DIR__ . '/views/media.php'; ?>
+    <?php endif; ?>
 
 
 
