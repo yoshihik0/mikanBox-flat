@@ -168,7 +168,7 @@ function getSortedPostIds() {
  * @param string $id ファイルのID
  * @return bool
  */
-function deleteData($dir, $id) {
+function mikanBoxStorageDeleteData($dir, $id) {
     $filePath = resolveSafeDataPath($dir, $id, '.json');
     if ($filePath !== false && file_exists($filePath)) {
         return unlink($filePath);
