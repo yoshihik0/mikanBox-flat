@@ -130,6 +130,7 @@
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
+                <div class="panel-card">
                     <form method="post">
                         <?php require __DIR__ . '/site-sections/password-account.php'; ?>
                         <input type="hidden" name="save_action" value="save_settings">
@@ -145,6 +146,8 @@
                         <button type="submit" class="btn btn-blue btn-small"><?= getIcon('save') ?> <?= t('btn_save') ?></button>
                     </form>
                 </div>
+                </div>
             </details>
         </div>
     </div>
+    <div class="section-end-gap" aria-hidden="true"></div>
