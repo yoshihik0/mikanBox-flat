@@ -227,6 +227,7 @@ if (empty($passwordHash) || !$isLoggedIn) {
 if (isset($_GET['update_checked'])) {
     require_once __DIR__ . '/lib/updater.php';
     mikanBoxUpdateRemoveRetiredTests(dirname(CORE_DIR));
+    mikanBoxUpdateRemoveRetiredProgramFiles(CORE_DIR);   // files earlier versions shipped, left by the previous updater
 }
 // ==========================================
 // Logged in: Load common data
