@@ -368,17 +368,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
 
         $updatedAt = $_POST['updated_at'] ?? date('Y-m-d H:i:s');
 
-        // Auto-set the update date to "now" when a page transitions from non-public
-        // (draft/db) to public, so it reflects the actual publish moment rather than
-        // whatever was left in the (manually editable) date field while still a draft.
-        // Once public, further edits keep whatever date is already in that field
-        // (nothing here bumps it automatically), so minor fixes don't move the date.
         $existingPageData = loadData(POSTS_DIR, $oldId ?: $id);
-        $wasPublic = $existingPageData && in_array($existingPageData['status'] ?? 'draft', ['public_dynamic', 'public_static'], true);
-        $isPublicNow = in_array($status, ['public_dynamic', 'public_static'], true);
-        if (!$wasPublic && $isPublicNow) {
-            $updatedAt = date('Y-m-d H:i:s');
-        }
 
         $data = [
             'title' => $_POST['title'] ?? '',
@@ -402,6 +392,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
             'expand_tags' => isset($_POST['expand_tags_present']) ? isset($_POST['expand_tags']) : null,
         ], $existingPageData ?: null);
         $data = mikanBoxNormalizeLegacyPage($data); // a "db" status from an old form means output format "mikanBox DB"
+        $data = mikanBoxApplyPageDates($data, $existingPageData ?: null);
+        $updatedAt = $data['updated_at'];
         $oldFormat = mikanBoxPageOutputFormat($existingPageData);
         if (saveData(POSTS_DIR, $id, $data)) {
             // Delete old file if URL slug (ID) has changed
@@ -457,9 +449,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $newStatus = $_POST['status'];
         $data = loadData(POSTS_DIR, $id);
         if ($data) {
+            $previous = $data;
             $data['status'] = $newStatus;
-            $data = mikanBoxNormalizeLegacyPage($data);
-            saveData(POSTS_DIR, $id, $data);
+            $data = mikanBoxApplyPageDates(mikanBoxNormalizeLegacyPage($data), $previous);
+            if (!saveData(POSTS_DIR, $id, $data)) {
+                mikanBoxAdminDone('admin.php?view=pages#pages', t('err_save_failed'), [], false);
+            }
             
             // Sync SSG if needed
             require_once __DIR__ . '/lib/ssg.php';
@@ -474,9 +469,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
     }
     elseif ($_POST['save_action'] === 'delete_page') {
         $id = $_POST['id'];
-        // index has no special protection: a missing page (including index) already falls
-        // back to the 404 page in MikanBoxRenderer::render(), so there's nothing unsafe
-        // about deleting it like any other page.
+        require_once __DIR__ . '/lib/ssg.php';
+        if (!mikanBoxRemovePublishedPageOutput($id, loadData(POSTS_DIR, $id), $settings)) {
+            mikanBoxAdminDone('admin.php?view=pages', t('err_page_output_delete'), [], false);
+        }
         if (deleteData(POSTS_DIR, $id)) {
             if (function_exists('mbv_hist_forget')) mbv_hist_forget($id);   // ビジュアル編集の履歴
             mikanBoxAdminDone('admin.php?view=pages', t('msg_page_deleted', $id), ['deleted' => $id]);
@@ -1013,8 +1009,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_action'])) {
         $status = $_POST['status'];
         $data = loadData(POSTS_DIR, $id);
         if ($data) {
+            $previous = $data;
             $data['status'] = $status;
-            $data = mikanBoxNormalizeLegacyPage($data);
+            $data = mikanBoxApplyPageDates(mikanBoxNormalizeLegacyPage($data), $previous);
             if (saveData(POSTS_DIR, $id, $data)) {
                 require_once __DIR__ . '/lib/ssg.php';
                 $ssgOpts = [
@@ -1051,6 +1048,7 @@ if (isset($_POST['ajax_request'])) {
         if ($siteDir === '/' || $siteDir === '.') $siteDir = '';
         $siteBaseUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $siteDir;
         $savedPage = loadData(POSTS_DIR, $editId);
+        $responseData['updated_at'] = $savedPage['updated_at'] ?? '';
         $savedExtension = mikanBoxFormatExtension(mikanBoxPageOutputFormat($savedPage));
         if ($savedExtension !== null) {
             // Markdown-only and data pages live at /id.<extension> in every URL style.
@@ -1772,14 +1770,7 @@ function getIcon($name) {
                 const json = await res.json().catch(()=>({}));
                 showToast(json.message || '<?= t('msg_update_success') ?? '保存しました' ?>');
                 
-                // Update class color dynamically without reload
-                const selectEl = document.querySelector(`select[onchange*="'${id}'"]`);
-                if (selectEl) {
-                    selectEl.classList.remove('static', 'dynamic', 'draft');
-                    if (newStatus === 'public_static') selectEl.classList.add('static');
-                    else if (newStatus === 'public_dynamic') selectEl.classList.add('dynamic');
-                    else selectEl.classList.add('draft');
-                }
+                await refreshPageList();
             } else {
                 showToast('<?= t('err_save_failed') ?>', true);
             }
@@ -2322,7 +2313,8 @@ function getIcon($name) {
                         // Refresh page/comp list in background after save
                         if (action === 'save_page') {
                             refreshPageList();
-
+                            const dateField = form.elements.namedItem('updated_at');
+                            if (dateField && json.updated_at) dateField.value = json.updated_at;
                         } else if (action === 'save_comp') {
                             refreshCompList();
                         }
