@@ -129,7 +129,15 @@ function mikanBoxLoadExactPage(string $id): ?array {
     return is_array($data) ? $data : null;
 }
 
-function mikanBoxCommitEditorPage(string $id, string $oldId, array $data, ?array $target): bool {
+function mikanBoxEditorBackupIdExists(string $id): bool {
+    foreach ([$id, $id . '/index'] as $candidate) {
+        $path = resolveSafeDataPath(POSTS_DIR, $candidate, '.json');
+        if ($path !== false && (file_exists($path) || is_link($path))) return true;
+    }
+    return false;
+}
+
+function mikanBoxCommitEditorPage(string $id, string $oldId, array $data, ?array $target, ?array $backup): bool {
     $renaming = $oldId !== '' && $id !== $oldId;
     if ($renaming && $target !== null) {
         $sourceFile = stat(resolveSafeDataPath(POSTS_DIR, $oldId, '.json'));
@@ -137,10 +145,14 @@ function mikanBoxCommitEditorPage(string $id, string $oldId, array $data, ?array
         // A case-insensitive filesystem can resolve both IDs to the same file.
         if ($sourceFile && $targetFile && $sourceFile['dev'] === $targetFile['dev'] && $sourceFile['ino'] === $targetFile['ino']) return false;
     }
-    if (!saveData(POSTS_DIR, $id, $data)) return false;
+    if ($backup !== null && !saveData(POSTS_DIR, $backup['id'], $backup['data'])) return false;
+    if (!saveData(POSTS_DIR, $id, $data)) {
+        if ($backup !== null) deleteData(POSTS_DIR, $backup['id']);
+        return false;
+    }
     if (!$renaming || deleteData(POSTS_DIR, $oldId)) return true;
-    if ($target !== null) saveData(POSTS_DIR, $id, $target);
-    else deleteData(POSTS_DIR, $id);
+    $restored = $target !== null ? saveData(POSTS_DIR, $id, $target) : deleteData(POSTS_DIR, $id);
+    if ($restored && $backup !== null) deleteData(POSTS_DIR, $backup['id']);
     return false;
 }
 
