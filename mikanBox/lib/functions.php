@@ -78,11 +78,70 @@ function mikanBoxSetupTokenMatches(string $input): bool {
  * @return bool Success or failure
  */
 function mikanBoxStorageSaveData($dir, $id, $data) {
+    if ($dir === POSTS_DIR) {
+        return mikanBoxWithPageWriteLock(fn() => mikanBoxWriteDataFile($dir, $id, $data)) === true;
+    }
+    return mikanBoxWriteDataFile($dir, $id, $data);
+}
+
+function mikanBoxWriteDataFile($dir, $id, $data): bool {
     $filePath = resolveSafeDataPath($dir, $id, '.json', true);
     if ($filePath === false) return false;
 
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    return file_put_contents($filePath, $json) !== false;
+    if ($json === false) return false;
+    if ($dir !== POSTS_DIR) return file_put_contents($filePath, $json) !== false;
+
+    $temp = tempnam(dirname($filePath), '.post-');
+    if ($temp === false) return false;
+    try {
+        return file_put_contents($temp, $json) === strlen($json)
+            && chmod($temp, is_file($filePath) ? fileperms($filePath) & 0777 : 0666 & ~umask())
+            && rename($temp, $filePath);
+    } finally {
+        if (is_file($temp)) unlink($temp);
+    }
+}
+
+function mikanBoxWithPageWriteLock(callable $write) {
+    static $locked = false;
+    if ($locked) return $write();
+    $lock = fopen(DATA_DIR . '/posts-lock.php', 'c');
+    if (!$lock) return false;
+    try {
+        if (!flock($lock, LOCK_EX)) return false;
+        $locked = true;
+        return $write();
+    } finally {
+        $locked = false;
+        fclose($lock);
+    }
+}
+
+function mikanBoxWithEditorPageWrite(callable $write): array {
+    return mikanBoxWithPageWriteLock($write) ?: ['message' => t('err_page_save')];
+}
+
+function mikanBoxLoadExactPage(string $id): ?array {
+    $path = resolveSafeDataPath(POSTS_DIR, $id, '.json');
+    if ($path === false || !is_file($path)) return null;
+    $data = json_decode((string)file_get_contents($path), true);
+    return is_array($data) ? $data : null;
+}
+
+function mikanBoxCommitEditorPage(string $id, string $oldId, array $data, ?array $target): bool {
+    $renaming = $oldId !== '' && $id !== $oldId;
+    if ($renaming && $target !== null) {
+        $sourceFile = stat(resolveSafeDataPath(POSTS_DIR, $oldId, '.json'));
+        $targetFile = stat(resolveSafeDataPath(POSTS_DIR, $id, '.json'));
+        // A case-insensitive filesystem can resolve both IDs to the same file.
+        if ($sourceFile && $targetFile && $sourceFile['dev'] === $targetFile['dev'] && $sourceFile['ino'] === $targetFile['ino']) return false;
+    }
+    if (!saveData(POSTS_DIR, $id, $data)) return false;
+    if (!$renaming || deleteData(POSTS_DIR, $oldId)) return true;
+    if ($target !== null) saveData(POSTS_DIR, $id, $target);
+    else deleteData(POSTS_DIR, $id);
+    return false;
 }
 
 /**
@@ -169,6 +228,11 @@ function getSortedPostIds() {
  * @return bool
  */
 function mikanBoxStorageDeleteData($dir, $id) {
+    if ($dir === POSTS_DIR) return mikanBoxWithPageWriteLock(fn() => mikanBoxDeleteDataFile($dir, $id)) === true;
+    return mikanBoxDeleteDataFile($dir, $id);
+}
+
+function mikanBoxDeleteDataFile($dir, $id): bool {
     $filePath = resolveSafeDataPath($dir, $id, '.json');
     if ($filePath !== false && file_exists($filePath)) {
         return unlink($filePath);
